@@ -1,0 +1,72 @@
+# Re-records the iOS snapshot goldens on CI's Mac and commits them to the
+# branch it was started on. For anyone without Xcode; on a Mac,
+# `tools/check.sh ios --record` does the same.
+#
+#   Actions → iOS goldens → Run workflow → pick the branch
+name: iOS goldens
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  CHARGEAHEAD_MAVEN_USER: ${{ secrets.CHARGEAHEAD_MAVEN_USER }}
+  CHARGEAHEAD_MAVEN_PASSWORD: ${{ secrets.CHARGEAHEAD_MAVEN_PASSWORD }}
+
+jobs:
+  record:
+    name: Record iOS goldens
+    if: github.ref != 'refs/heads/main'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install xcodegen and the pinned simulator
+        run: |
+          brew install xcodegen
+          . tools/ios-toolchain.env
+          if ! xcrun simctl list runtimes | grep -q "iOS $IOS_RUNTIME "; then
+            sudo xcode-select -s "/Applications/Xcode_$XCODE_VERSION.app"
+            xcodebuild -downloadPlatform iOS -buildVersion "$IOS_RUNTIME"
+          fi
+
+      - name: Record and validate
+        run: tools/check.sh ios --record
+
+      - name: Commit the goldens
+        id: commit
+        run: |
+          git add iosApp/ChargeAheadSnapshotTests
+          if git diff --cached --quiet; then
+            echo "The goldens were already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test: ios goldens, re-recorded on ci"
+          git push
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      # The push above starts no workflow; without this the new commit has no checks.
+      - name: Run CI on the new commit
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref "${{ github.ref_name }}"
