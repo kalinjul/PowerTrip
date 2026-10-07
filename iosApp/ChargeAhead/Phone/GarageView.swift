@@ -4,7 +4,6 @@ import Shared
 /// The garage: the car planning uses, adding one from the catalog, and the two battery levels.
 struct GarageView: View {
     @StateObject private var owner: ViewModelOwner
-    @Environment(\.dismiss) private var dismiss
 
     init(feature: ChargeStopsFeature) {
         _owner = StateObject(wrappedValue: ViewModelOwner(feature: feature))
@@ -12,88 +11,129 @@ struct GarageView: View {
 
     var body: some View {
         let garage = owner.viewModels.garage()
+        Observing(garage.uiState) { state in
+            GarageContent(
+                state: state,
+                actions: GarageActions(
+                    vehicleSelected: { garage.onVehicleSelected(profile: $0) },
+                    socOpened: { garage.onSocSheetOpened() },
+                    socChanged: { garage.onSocSheetChanged(percent: Int32($0)) },
+                    socConfirmed: { garage.onSocSheetConfirmed() },
+                    socDismissed: { garage.onSocSheetDismissed() },
+                    arrivalOpened: { garage.onArrivalSheetOpened() },
+                    arrivalChanged: { garage.onArrivalSheetChanged(percent: Int32($0)) },
+                    arrivalConfirmed: { garage.onArrivalSheetConfirmed() },
+                    arrivalDismissed: { garage.onArrivalSheetDismissed() }
+                )
+            ) {
+                AddCarView(addCar: owner.viewModels.addCar())
+            }
+        }
+    }
+}
+
+struct GarageActions {
+    var vehicleSelected: (VehicleProfile) -> Void = { _ in }
+    var socOpened: () -> Void = {}
+    var socChanged: (Int) -> Void = { _ in }
+    var socConfirmed: () -> Void = {}
+    var socDismissed: () -> Void = {}
+    var arrivalOpened: () -> Void = {}
+    var arrivalChanged: (Int) -> Void = { _ in }
+    var arrivalConfirmed: () -> Void = {}
+    var arrivalDismissed: () -> Void = {}
+}
+
+/// The garage drawn from its state alone.
+struct GarageContent<AddCar: View>: View {
+    let state: GarageUiState
+    var actions = GarageActions()
+    @ViewBuilder let addCar: () -> AddCar
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
         NavigationStack {
-            Observing(garage.uiState) { state in
-                List {
-                    if state.loading {
-                        ProgressView()
-                    } else {
-                        Section {
-                            if state.vehicles.isEmpty {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(localized("garage_empty_title")).font(.headline)
-                                    Text(localized("garage_empty_text"))
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
+            List {
+                if state.loading {
+                    ProgressView()
+                } else {
+                    Section {
+                        if state.vehicles.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(localized("garage_empty_title")).font(.headline)
+                                Text(localized("garage_empty_text"))
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
                             }
-                            ForEach(state.vehicles, id: \.id) { vehicle in
-                                Button {
-                                    garage.onVehicleSelected(profile: vehicle)
-                                } label: {
-                                    VehicleRow(
-                                        vehicle: vehicle,
-                                        rangeKm: state.fullRangeKm[vehicle.id]?.doubleValue,
-                                        selected: vehicle.id == state.selected?.id
-                                    )
-                                }
-                                .foregroundStyle(.primary)
-                                .accessibilityIdentifier("vehicle")
-                                .accessibilityAddTraits(vehicle.id == state.selected?.id ? .isSelected : [])
-                            }
-                            NavigationLink {
-                                AddCarView(addCar: owner.viewModels.addCar())
+                        }
+                        ForEach(state.vehicles, id: \.id) { vehicle in
+                            Button {
+                                actions.vehicleSelected(vehicle)
                             } label: {
-                                Label(localized("garage_add_title"), systemImage: "plus")
+                                VehicleRow(
+                                    vehicle: vehicle,
+                                    rangeKm: state.fullRangeKm[vehicle.id]?.doubleValue,
+                                    selected: vehicle.id == state.selected?.id
+                                )
                             }
-                            .accessibilityIdentifier("garage-add")
+                            .foregroundStyle(.primary)
+                            .accessibilityIdentifier("vehicle")
+                            .accessibilityAddTraits(vehicle.id == state.selected?.id ? .isSelected : [])
                         }
-                        Section {
-                            LevelRow(
-                                icon: "bolt.batteryblock",
-                                title: localized("garage_soc_title"),
-                                hint: localized("garage_soc_row_hint"),
-                                percent: state.socPercent
-                            ) { garage.onSocSheetOpened() }
-                            .accessibilityIdentifier("level-soc")
-                            LevelRow(
-                                icon: "flag",
-                                title: localized("garage_arrival_title"),
-                                hint: localized("garage_arrival_row_hint"),
-                                percent: state.arrivalSocPercent
-                            ) { garage.onArrivalSheetOpened() }
-                            .accessibilityIdentifier("level-arrival")
+                        NavigationLink {
+                            addCar()
+                        } label: {
+                            Label(localized("garage_add_title"), systemImage: "plus")
                         }
+                        .accessibilityIdentifier("garage-add")
+                    }
+                    Section {
+                        LevelRow(
+                            icon: "bolt.batteryblock",
+                            title: localized("garage_soc_title"),
+                            hint: localized("garage_soc_row_hint"),
+                            percent: state.socPercent,
+                            onTap: actions.socOpened
+                        )
+                        .accessibilityIdentifier("level-soc")
+                        LevelRow(
+                            icon: "flag",
+                            title: localized("garage_arrival_title"),
+                            hint: localized("garage_arrival_row_hint"),
+                            percent: state.arrivalSocPercent,
+                            onTap: actions.arrivalOpened
+                        )
+                        .accessibilityIdentifier("level-arrival")
                     }
                 }
-                .sheet(item: Binding(
-                    get: { state.socSheet.map { OpenLevel(percent: $0.intValue) } },
-                    set: { open in if open == nil { garage.onSocSheetDismissed() } }
-                )) { open in
-                    LevelSheet(
-                        title: localized("garage_soc_title"),
-                        hint: localized("garage_soc_sheet_hint"),
-                        percent: open.percent,
-                        range: TripPlanKt.SOC_RANGE,
-                        onChange: { garage.onSocSheetChanged(percent: Int32($0)) },
-                        onApply: { garage.onSocSheetConfirmed() },
-                        onCancel: { garage.onSocSheetDismissed() }
-                    )
-                }
-                .sheet(item: Binding(
-                    get: { state.arrivalSheet.map { OpenLevel(percent: $0.intValue) } },
-                    set: { open in if open == nil { garage.onArrivalSheetDismissed() } }
-                )) { open in
-                    LevelSheet(
-                        title: localized("garage_arrival_title"),
-                        hint: localized("garage_arrival_sheet_hint"),
-                        percent: open.percent,
-                        range: GarageViewModelKt.ARRIVAL_SOC_RANGE,
-                        onChange: { garage.onArrivalSheetChanged(percent: Int32($0)) },
-                        onApply: { garage.onArrivalSheetConfirmed() },
-                        onCancel: { garage.onArrivalSheetDismissed() }
-                    )
-                }
+            }
+            .sheet(item: Binding(
+                get: { state.socSheet.map { OpenLevel(percent: $0.intValue) } },
+                set: { open in if open == nil { actions.socDismissed() } }
+            )) { open in
+                LevelSheet(
+                    title: localized("garage_soc_title"),
+                    hint: localized("garage_soc_sheet_hint"),
+                    percent: open.percent,
+                    range: TripPlanKt.SOC_RANGE,
+                    onChange: actions.socChanged,
+                    onApply: actions.socConfirmed,
+                    onCancel: actions.socDismissed
+                )
+            }
+            .sheet(item: Binding(
+                get: { state.arrivalSheet.map { OpenLevel(percent: $0.intValue) } },
+                set: { open in if open == nil { actions.arrivalDismissed() } }
+            )) { open in
+                LevelSheet(
+                    title: localized("garage_arrival_title"),
+                    hint: localized("garage_arrival_sheet_hint"),
+                    percent: open.percent,
+                    range: GarageViewModelKt.ARRIVAL_SOC_RANGE,
+                    onChange: actions.arrivalChanged,
+                    onApply: actions.arrivalConfirmed,
+                    onCancel: actions.arrivalDismissed
+                )
             }
             .navigationTitle(localized("garage_title"))
             .navigationBarTitleDisplayMode(.inline)
@@ -170,7 +210,7 @@ private struct LevelRow: View {
 }
 
 /// A level picked with a slider, applied only on confirm, like the Android sheet.
-private struct LevelSheet: View {
+struct LevelSheet: View {
     let title: String
     let hint: String
     let percent: Int
@@ -208,41 +248,51 @@ private struct LevelSheet: View {
 /// The catalog minus what is already in the garage, searchable; a tap adds the car and selects it.
 struct AddCarView: View {
     let addCar: AddCarViewModel
-    @Environment(\.dismiss) private var dismiss
     // The field's own echo: read back from the ViewModel, fast typing lost characters.
     @State private var query = ""
 
     var body: some View {
         Observing(addCar.uiState) { state in
-            List(state.matches, id: \.id) { preset in
-                Button {
-                    addCar.onPresetAdded(preset: preset)
-                    dismiss()
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(preset.name).font(.headline)
-                        Text(localized(
-                            "garage_preset_line",
-                            oneDecimal(preset.usableBatteryKwh),
-                            oneDecimal(preset.consumptionKwhPer100Km),
-                            Int32(preset.dcPeakPowerKw.rounded())
-                        ))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    }
+            AddCarContent(state: state, query: $query) { addCar.onPresetAdded(preset: $0) }
+        }
+        .onChange(of: query) { _, text in addCar.onQueryChanged(query: text) }
+        .onAppear { query = addCar.uiState.value.query }
+    }
+}
+
+struct AddCarContent: View {
+    let state: AddCarUiState
+    @Binding var query: String
+    var onPresetAdded: (VehiclePreset) -> Void = { _ in }
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        List(state.matches, id: \.id) { preset in
+            Button {
+                onPresetAdded(preset)
+                dismiss()
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(preset.name).font(.headline)
+                    Text(localized(
+                        "garage_preset_line",
+                        oneDecimal(preset.usableBatteryKwh),
+                        oneDecimal(preset.consumptionKwhPer100Km),
+                        Int32(preset.dcPeakPowerKw.rounded())
+                    ))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(.primary)
-                .accessibilityIdentifier("preset")
             }
-            .overlay {
-                if state.matches.isEmpty && !state.query.isEmpty {
-                    ContentUnavailableView.search(text: state.query)
-                }
+            .foregroundStyle(.primary)
+            .accessibilityIdentifier("preset")
+        }
+        .overlay {
+            if state.matches.isEmpty && !state.query.isEmpty {
+                ContentUnavailableView.search(text: state.query)
             }
         }
         .searchable(text: $query, prompt: localized("garage_search"))
-        .onChange(of: query) { _, text in addCar.onQueryChanged(query: text) }
-        .onAppear { query = addCar.uiState.value.query }
         .navigationTitle(localized("garage_add_title"))
         .navigationBarTitleDisplayMode(.inline)
     }

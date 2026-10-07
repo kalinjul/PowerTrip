@@ -34,6 +34,11 @@ settings:
     # CHARGEAHEAD_BASE_URL and CHARGEAHEAD_TOKEN come only from Secrets.xcconfig:
     # a value here, even an empty one, would override the xcconfig.
 
+packages:
+  SnapshotTesting:
+    url: https://github.com/pointfreeco/swift-snapshot-testing
+    exactVersion: 1.19.6
+
 configFiles:
   # If the file doesn't exist, XcodeGen ignores the entry — the build then
   # succeeds, but the app stops at launch without a backend.
@@ -94,13 +99,35 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: org.julakali.chargeahead.uitests
         GENERATE_INFOPLIST_FILE: true
 
+  # Screens and markers against their goldens: tools/check.sh ios.
+  ChargeAheadSnapshotTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: ChargeAheadSnapshotTests
+        excludes:
+          - "**/__Snapshots__/**"
+    dependencies:
+      - target: ChargeAhead
+      - package: SnapshotTesting
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.julakali.chargeahead.snapshottests
+        GENERATE_INFOPLIST_FILE: true
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+
 schemes:
   ChargeAhead:
     build:
       targets:
         ChargeAhead: all
         ChargeAheadUITests: [test]
+        ChargeAheadSnapshotTests: [test]
     test:
       targets:
         - ChargeAheadUITests
+        - ChargeAheadSnapshotTests
 

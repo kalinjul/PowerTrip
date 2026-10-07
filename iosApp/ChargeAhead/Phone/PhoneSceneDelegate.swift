@@ -12,7 +12,7 @@ class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
-        guard let windowScene = scene as? UIWindowScene else { return }
+        guard let windowScene = scene as? UIWindowScene, !SharedEntry.hostsUnitTests else { return }
 
         let window = UIWindow(windowScene: windowScene)
         window.rootViewController = UIHostingController(rootView: HomeMapView())

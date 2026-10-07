@@ -11,7 +11,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        SharedEntry.start()
+        if !SharedEntry.hostsUnitTests { SharedEntry.start() }
         return true
     }
 
@@ -42,6 +42,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 /// The shared entry points both scenes build on.
 enum SharedEntry {
+
+    /// Snapshot tests run inside the app and bring their own state; without a graph,
+    /// they need neither a backend nor the home screen.
+    static let hostsUnitTests = NSClassFromString("XCTestCase") != nil
 
     /// Builds the shared graph once, before any scene connects.
     static func start() {
