@@ -1,4 +1,5 @@
 import Shared
+@testable import ChargeAhead
 
 /// Fixed data for the goldens; nothing here talks to a backend.
 enum Fixtures {
@@ -78,4 +79,18 @@ extension Fixtures {
             fullRangeKm: ranges
         )
     }
+}
+
+extension GarageActions {
+    static let none = GarageActions(
+        vehicleSelected: { _ in },
+        socOpened: {},
+        socChanged: { _ in },
+        socConfirmed: {},
+        socDismissed: {},
+        arrivalOpened: {},
+        arrivalChanged: { _ in },
+        arrivalConfirmed: {},
+        arrivalDismissed: {}
+    )
 }

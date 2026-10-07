@@ -33,21 +33,21 @@ struct GarageView: View {
 }
 
 struct GarageActions {
-    var vehicleSelected: (VehicleProfile) -> Void = { _ in }
-    var socOpened: () -> Void = {}
-    var socChanged: (Int) -> Void = { _ in }
-    var socConfirmed: () -> Void = {}
-    var socDismissed: () -> Void = {}
-    var arrivalOpened: () -> Void = {}
-    var arrivalChanged: (Int) -> Void = { _ in }
-    var arrivalConfirmed: () -> Void = {}
-    var arrivalDismissed: () -> Void = {}
+    let vehicleSelected: (VehicleProfile) -> Void
+    let socOpened: () -> Void
+    let socChanged: (Int) -> Void
+    let socConfirmed: () -> Void
+    let socDismissed: () -> Void
+    let arrivalOpened: () -> Void
+    let arrivalChanged: (Int) -> Void
+    let arrivalConfirmed: () -> Void
+    let arrivalDismissed: () -> Void
 }
 
 /// The garage drawn from its state alone.
 struct GarageContent<AddCar: View>: View {
     let state: GarageUiState
-    var actions = GarageActions()
+    let actions: GarageActions
     @ViewBuilder let addCar: () -> AddCar
     @Environment(\.dismiss) private var dismiss
 
@@ -263,7 +263,7 @@ struct AddCarView: View {
 struct AddCarContent: View {
     let state: AddCarUiState
     @Binding var query: String
-    var onPresetAdded: (VehiclePreset) -> Void = { _ in }
+    let onPresetAdded: (VehiclePreset) -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {

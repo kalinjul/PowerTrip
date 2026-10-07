@@ -68,8 +68,11 @@ private var keyWindow: UIWindow?
 /// The test host draws no screen of its own, so the first window is ours.
 @MainActor
 private func ensureKeyWindow() {
-    guard keyWindow == nil,
-          let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+    guard keyWindow == nil else { return }
+    guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
+        XCTFail("the test host has no window scene to draw in")
+        return
+    }
     let window = UIWindow(windowScene: scene)
     window.rootViewController = UIViewController()
     window.makeKeyAndVisible()

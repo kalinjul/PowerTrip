@@ -104,7 +104,17 @@ check_simulator() {
   local runtime="com.apple.CoreSimulator.SimRuntime.iOS-${IOS_RUNTIME//./-}"
   local runtimes
   runtimes="$(xcrun simctl list runtimes -j)"
-  case "$runtimes" in *"\"$runtime\""*) ;; *) die "the iOS $IOS_RUNTIME simulator is missing: xcodebuild -downloadPlatform iOS -buildVersion $IOS_RUNTIME" ;;
+  case "$runtimes" in
+    *"\"$runtime\""*) ;;
+    *)
+      $goldens && die "the iOS $IOS_RUNTIME simulator is missing: xcodebuild -downloadPlatform iOS -buildVersion $IOS_RUNTIME"
+      runtime="$(python3 -c '
+import json, sys
+ios = [r["identifier"] for r in json.loads(sys.argv[1])["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
+print(sorted(ios, key=lambda r: [int(n) for n in r.rsplit("iOS-", 1)[1].split("-")])[-1] if ios else "")
+' "$runtimes")"
+      [ -n "$runtime" ] || die "no iOS simulator installed: xcodebuild -downloadPlatform iOS"
+      ;;
   esac
   local udid
   udid="$(xcrun simctl list devices -j | python3 -c '
@@ -139,7 +149,8 @@ ios_gates() {
     ios_linux_gates
     return
   fi
-  select_xcode
+  # Only the goldens depend on the pin; the build and tests run on any Xcode.
+  if $goldens; then select_xcode; else echo "Xcode $(xcodebuild -version | sed -n 's/^Xcode //p'), unpinned: no goldens"; fi
   command -v xcodegen >/dev/null || die "xcodegen missing: brew install xcodegen"
 
   step "iOS: shared tests on Kotlin/Native"
@@ -161,6 +172,8 @@ ios_gates() {
   local run=(test-without-building "${xcode[@]}" -testLanguage de -testRegion DE)
   if $record; then
     step "iOS: re-record goldens"
+    # Renamed or deleted tests would otherwise leave their goldens behind.
+    rm -rf "$IOS_DIR/ChargeAheadSnapshotTests/__Snapshots__"
     # Recording fails every test on purpose ("record mode is on"); the validate run below is the verdict.
     TEST_RUNNER_SNAPSHOT_TESTING_RECORD=all \
       xcodebuild "${run[@]}" -only-testing:ChargeAheadSnapshotTests || true

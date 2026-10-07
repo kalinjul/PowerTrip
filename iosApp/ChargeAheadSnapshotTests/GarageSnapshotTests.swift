@@ -7,11 +7,11 @@ import XCTest
 final class GarageSnapshotTests: XCTestCase {
 
     func testTwoCarsOneSelected() {
-        assertLightAndDark(GarageContent(state: Fixtures.garage()) { EmptyView() }, named: "garage", frame: .phone)
+        assertLightAndDark(GarageContent(state: Fixtures.garage(), actions: .none) { EmptyView() }, named: "garage", frame: .phone)
     }
 
     func testEmptyGarage() {
-        assertLightAndDark(GarageContent(state: Fixtures.garage([], selected: nil)) { EmptyView() }, named: "garage", frame: .phone)
+        assertLightAndDark(GarageContent(state: Fixtures.garage([], selected: nil), actions: .none) { EmptyView() }, named: "garage", frame: .phone)
     }
 
     func testBatteryLevelSheet() {
@@ -33,7 +33,7 @@ final class GarageSnapshotTests: XCTestCase {
     func testCatalog() {
         assertLightAndDark(
             NavigationStack {
-                AddCarContent(state: AddCarUiState(query: "", matches: [Fixtures.model3, Fixtures.id3, Fixtures.zoe]), query: .constant(""))
+                AddCarContent(state: AddCarUiState(query: "", matches: [Fixtures.model3, Fixtures.id3, Fixtures.zoe]), query: .constant("")) { _ in }
             },
             named: "add-car",
             frame: .phone
@@ -43,7 +43,7 @@ final class GarageSnapshotTests: XCTestCase {
     func testCatalogWithoutMatch() {
         assertLightAndDark(
             NavigationStack {
-                AddCarContent(state: AddCarUiState(query: "Trabant", matches: []), query: .constant("Trabant"))
+                AddCarContent(state: AddCarUiState(query: "Trabant", matches: []), query: .constant("Trabant")) { _ in }
             },
             named: "add-car",
             frame: .phone
