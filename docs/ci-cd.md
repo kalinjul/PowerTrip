@@ -19,7 +19,8 @@ one, and the GitHub job stays a thin wrapper that only hands over secrets.
 A first job, **Which app changed**, sorts the pull request's files with
 `tools/check.sh sides` and starts only the jobs of the app they belong to
 (rules in docs/testing.md, "Only what changed"). A push to `main` runs
-everything. A skipped job counts as passed for the required checks.
+everything. A skipped job counts as passed for the required checks, so if
+the sorting itself fails, every job runs.
 
 Then, in parallel, matching what AGENTS.md demands before anything counts
 as done:

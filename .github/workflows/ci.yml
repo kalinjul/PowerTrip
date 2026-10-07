@@ -54,7 +54,7 @@ jobs:
       - name: Sort the changed files
         id: sides
         run: |
-          if [ "${{ github.event_name }}" = push ]; then
+          if [ "${{ github.event_name }}" = push ] || [ "${{ github.ref }}" = refs/heads/main ]; then
             sides="android ios"
           else
             sides="$(tools/check.sh sides --base origin/main)"
@@ -63,11 +63,12 @@ jobs:
           case " $sides " in *" android "*) echo "android=true" >> "$GITHUB_OUTPUT" ;; esac
           case " $sides " in *" ios "*) echo "ios=true" >> "$GITHUB_OUTPUT" ;; esac
 
-  # A job skipped here still counts as passed for the required checks.
+  # A skipped job counts as passed for the required checks, so when the
+  # sorting itself fails, every job runs.
   android:
     name: Android build + shared tests
     needs: changes
-    if: needs.changes.outputs.android == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -141,7 +142,7 @@ jobs:
   ios-kotlin:
     name: Kotlin/Native (iosMain)
     needs: changes
-    if: needs.changes.outputs.ios == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -183,7 +184,7 @@ jobs:
   swift-syntax:
     name: Swift syntax check
     needs: changes
-    if: needs.changes.outputs.ios == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -203,7 +204,7 @@ jobs:
   ios:
     name: iOS app + snapshot goldens
     needs: changes
-    if: needs.changes.outputs.ios == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios == 'true') }}
     # The goldens' Xcode and simulator (tools/ios-toolchain.env) are installed there.
     runs-on: macos-26
     steps:
@@ -241,7 +242,7 @@ jobs:
         run: |
           brew install xcodegen
           . tools/ios-toolchain.env
-          if ! xcrun simctl list runtimes | grep -q "iOS $IOS_RUNTIME "; then
+          if ! grep -q "iOS $IOS_RUNTIME " <<< "$(xcrun simctl list runtimes)"; then
             sudo xcode-select -s "/Applications/Xcode_$XCODE_VERSION.app"
             xcodebuild -downloadPlatform iOS -buildVersion "$IOS_RUNTIME"
           fi

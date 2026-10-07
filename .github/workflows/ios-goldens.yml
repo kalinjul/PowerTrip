@@ -38,11 +38,25 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Check the Maven credentials
+        run: |
+          if [ -z "${CHARGEAHEAD_MAVEN_USER:-}" ] || [ -z "${CHARGEAHEAD_MAVEN_PASSWORD:-}" ]; then
+            echo "::error title=No Maven credentials::org.julakali.chargeahead:api-model cannot be resolved without them."
+            exit 1
+          fi
+
+      - name: Cache Kotlin/Native toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+
       - name: Install xcodegen and the pinned simulator
         run: |
           brew install xcodegen
           . tools/ios-toolchain.env
-          if ! xcrun simctl list runtimes | grep -q "iOS $IOS_RUNTIME "; then
+          if ! grep -q "iOS $IOS_RUNTIME " <<< "$(xcrun simctl list runtimes)"; then
             sudo xcode-select -s "/Applications/Xcode_$XCODE_VERSION.app"
             xcodebuild -downloadPlatform iOS -buildVersion "$IOS_RUNTIME"
           fi
