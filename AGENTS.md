@@ -388,31 +388,31 @@ called in Swift.
 ### On a Mac with Xcode — the whole app builds
 
 There the framework links and Swift compiles against the real header, so
-everything above that stays unverified on Linux gets checked: `xcodegen
-generate`, then the `xcodebuild` command from `iosApp/README.md`. It
-replaces `tools/check-swift.sh`.
+everything above that stays unverified on Linux gets checked:
+`tools/check.sh ios` generates the project, builds and tests it. It replaces
+`tools/check-swift.sh`, and CI runs the same on a Mac runner.
 
 ## Before reporting something as done
 
-1. `./gradlew :androidApp:assembleDebug` completes — show the output, don't
-   just claim it.
-2. `./gradlew :shared:jvmTest` completes.
-2b. `./gradlew :ui-tests:testDebugUnitTest` and `tools/screenshots.sh validate`
-   complete, if `phone-ui/` or `ui-tests/` was touched. A screenshot that
-   changed on purpose is re-recorded with `tools/screenshots.sh update` and the
-   PNG committed — goldens only match where they were rendered, see
-   docs/testing.md.
-3. `./gradlew :shared:compileKotlinIosSimulatorArm64` completes, if
-   `shared/` was touched. This is mandatory, not optional: otherwise
-   `commonMain` is only checked against JVM and Android, and Kotlin/Native
-   is stricter.
-4. `tools/check-swift.sh` completes, if Swift files were touched (on a
-   Mac: the `xcodebuild` from `iosApp/README.md`). If
-   `swiftc` isn't installed, the script exits with code 127 — then the
-   Swift files are **also not** syntactically checked, and that must be
-   reported as such.
-5. No file outside the assigned directory was touched.
-6. Anything that couldn't be built or checked is named explicitly as
+1. `tools/check.sh` completes — show the output, don't just claim it. It
+   runs the gates of the app the change touches, the same ones CI runs:
+   - **Android:** every module compiles; shared, phone and car tests; the
+     goldens in the container.
+   - **iOS:** Kotlin/Native tests; the app and its test bundles build,
+     Swift warnings being errors; snapshot goldens on the pinned simulator;
+     the XCUITest when `iosApp/Secrets.xcconfig` exists.
+
+   Shared code wakes both. `tools/check.sh sides` says which apps a change
+   touches.
+2. A screenshot that changed on purpose is re-recorded with
+   `tools/check.sh --record` and the PNG committed. Goldens only match where
+   they were rendered, see docs/testing.md.
+3. Without Xcode, the iOS part shrinks to `:shared:compileKotlinIosSimulatorArm64`
+   and `tools/check-swift.sh`, and `check.sh` says what it skipped. Those
+   are **unverified** until CI's Mac has run them. If `swiftc` is missing
+   too, the Swift files are not even syntax-checked; report that as well.
+4. No file outside the assigned directory was touched.
+5. Anything that couldn't be built or checked is named explicitly as
    unverified.
 
 Don't claim something works when it was only written.

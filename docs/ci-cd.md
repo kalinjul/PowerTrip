@@ -5,6 +5,7 @@ Two workflows, one fastlane configuration:
 | What | Where | Trigger |
 | --- | --- | --- |
 | Build and test | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | push to `main`, pull request against `main` |
+| Re-record the iOS goldens on a branch | [`.github/workflows/ios-goldens.yml`](../.github/workflows/ios-goldens.yml) | by hand, *Run workflow* |
 | Ship to the Play internal track | [`.github/workflows/release.yml`](../.github/workflows/release.yml) | a GitHub release is published |
 | What a release actually does | [`fastlane/Fastfile`](../fastlane/Fastfile) | called by the release workflow |
 
@@ -15,7 +16,12 @@ one, and the GitHub job stays a thin wrapper that only hands over secrets.
 
 ## CI
 
-Three parallel jobs, matching what AGENTS.md demands before anything counts
+A first job, **Which app changed**, sorts the pull request's files with
+`tools/check.sh sides` and starts only the jobs of the app they belong to
+(rules in docs/testing.md, "Only what changed"). A push to `main` runs
+everything. A skipped job counts as passed for the required checks.
+
+Then, in parallel, matching what AGENTS.md demands before anything counts
 as done:
 
 - **Android build + shared tests** — `:androidApp:assembleDebug` and
@@ -27,6 +33,11 @@ as done:
 - **Swift syntax check** — `tools/check-swift.sh`. If the runner image has no
   `swiftc`, the job emits a warning annotation and passes: the check was
   never load-bearing, and a red build here would say nothing about the code.
+- **iOS app + snapshot goldens** — on a `macos-26` runner, `tools/check.sh
+  ios`: Kotlin/Native tests, the app and test bundles built, the snapshot
+  goldens compared on the pinned Xcode and simulator. The XCUITest stays
+  local; it needs the backend. Differing renders are uploaded on failure.
+  macOS minutes are free on a public repository.
 
 CI gets **one** secret: the Maven access to the contract module. `api-model`
 comes from the ChargeAhead backend's own repository, and without credentials

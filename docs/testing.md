@@ -11,7 +11,9 @@ analysis that led here is at the bottom.
 | Behaviour tests | `ui-tests/src/test` | JVM (Robolectric) | Do the phone screens show the right state and fire the right callbacks? |
 | PhoneApp flow tests | `ui-tests/src/test/.../phoneapp` | JVM (Robolectric) | Does the whole phone app hold together: search → plan → sheet, X, back order, layout toggle, replan? |
 | Screenshot tests | `ui-tests/src/screenshotTest` | JVM (Layoutlib) | Do the components still look like the approved picture? |
-| Device | by hand | phone / DHU | Map, live data, Android Auto, feel |
+| iOS snapshot tests | `iosApp/ChargeAheadSnapshotTests` | iOS simulator, pinned | Do the iOS screens and markers still look like the approved picture? |
+| iOS UI test | `iosApp/ChargeAheadUITests` | iOS simulator, with the backend | Does adding and picking a car work in the real app? |
+| Device | by hand | phone / DHU / iOS simulator | Map, live data, Android Auto, feel |
 
 Nothing in the test modules talks to a backend, the geocoder, Google Maps
 or the network. Composables get fixed data from `Fixtures.kt`; the clock is
@@ -29,7 +31,11 @@ pinned through `LocalNow` so trip times don't drift.
 ## Commands
 
 ```bash
-./gradlew testAll                                  # all of the below, minus recording
+tools/check.sh                                     # the gates of the app you touched, as CI runs them
+tools/check.sh sides                               # which app that is: android, ios, both or none
+tools/check.sh android|ios|all [--record] [--no-goldens]
+
+./gradlew testAll                                  # Android's tests, minus recording
 
 ./gradlew :shared:jvmTest                          # unit tests
 ./gradlew :ui-tests:testDebugUnitTest              # behaviour tests
@@ -59,6 +65,46 @@ goldens are rendered in the container and nowhere else. If a run ever fails
 on noise alone, raise it in small steps and look at what it starts hiding.
 When a golden changes on purpose, `tools/screenshots.sh update`, look at the
 diff, commit the PNG.
+
+## Only what changed
+
+`tools/changed-sides.sh` sorts changed paths into the app they belong to:
+`iosApp/`, `shared/src/iosMain` and the iOS tools wake iOS; `phone-ui/`,
+`ui-tests/`, `androidApp/` and the JVM/Android source sets wake Android;
+`shared/src/commonMain` (strings included), the build files and anything no
+rule knows wake both; docs and `.claude/` wake nothing.
+`tools/changed-sides.test.sh` pins the rules. `tools/check.sh` and CI's
+first job both go through it; main always runs everything.
+
+## iOS snapshots
+
+`swift-snapshot-testing` (Point-Free, MIT), in a unit-test bundle hosted by
+the app. Under a test host the app starts no Koin graph and no home screen,
+so no backend is needed; tests feed `<Screen>Content` views from
+`Fixtures.swift`. `assertLightAndDark(view, named:, frame:)` writes
+`__Snapshots__/<Class>/<test>.<name>-light|dark.png`; `.phone` renders a
+whole iPhone 17 Pro screen in a real window (the glass bars stay blank when
+drawn off-screen), `.fitting` the view at its own size. German, like the
+Android goldens.
+
+Rendering differs between Xcode and simulator versions the way layoutlib
+differs between macOS and Linux, so both are pinned in
+`tools/ios-toolchain.env` (Xcode 26.3, iOS 26.2, iPhone 17 Pro), and
+`check.sh` refuses others. It runs on its own simulator, "ChargeAhead
+Checks", created on first use, so the one you work with is never touched.
+Tolerance: 0.1 % of pixels may differ beyond a perceptual 2 %.
+
+Recording, from the terminal; Xcode only has to be installed:
+
+- On a Mac: `tools/check.sh ios --record`, look at the changed PNGs, commit
+  them. The first time: `xcodebuild -downloadPlatform iOS -buildVersion 26.2`.
+- Without a Mac: push the branch, then *Actions → iOS goldens → Run
+  workflow* on it. CI's Mac records, commits the goldens to the branch and
+  starts CI on that commit.
+
+When a test fails, the differing renders are in
+`iosApp/build/check/snapshot-failures/`, on CI in the
+`ios-snapshot-failures` artifact.
 
 ## Writing tests
 
