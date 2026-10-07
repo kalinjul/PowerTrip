@@ -102,8 +102,10 @@ select_xcode() {
 # Its own simulator, so the gates never touch the one a developer is using.
 check_simulator() {
   local runtime="com.apple.CoreSimulator.SimRuntime.iOS-${IOS_RUNTIME//./-}"
-  xcrun simctl list runtimes -j | grep -q "\"$runtime\"" \
-    || die "the iOS $IOS_RUNTIME simulator is missing: xcodebuild -downloadPlatform iOS -buildVersion $IOS_RUNTIME"
+  local runtimes
+  runtimes="$(xcrun simctl list runtimes -j)"
+  case "$runtimes" in *"\"$runtime\""*) ;; *) die "the iOS $IOS_RUNTIME simulator is missing: xcodebuild -downloadPlatform iOS -buildVersion $IOS_RUNTIME" ;;
+  esac
   local udid
   udid="$(xcrun simctl list devices -j | python3 -c '
 import json, sys
@@ -120,13 +122,20 @@ print(next((d["udid"] for d in devices if d["name"] == sys.argv[2] and d["isAvai
 ios_linux_gates() {
   step "iOS without Xcode: iosMain compiles, Swift parses"
   gradle :shared:compileKotlinIosSimulatorArm64
-  "$REPO_ROOT/tools/check-swift.sh"
+  local swift=0
+  "$REPO_ROOT/tools/check-swift.sh" || swift=$?
+  if [ "$swift" -eq 127 ]; then
+    echo "Swift syntax unchecked: no swiftc on this machine."
+  elif [ "$swift" -ne 0 ]; then
+    exit "$swift"
+  fi
   echo
   echo "iOS app build, snapshot goldens and UI tests skipped: no Xcode on this machine. CI checks them."
 }
 
 ios_gates() {
-  if [ "$(uname)" != Darwin ] || ! command -v xcodebuild >/dev/null; then
+  # A Mac with only the Command Line Tools has an xcodebuild that refuses to run.
+  if [ "$(uname)" != Darwin ] || ! xcodebuild -version >/dev/null 2>&1; then
     ios_linux_gates
     return
   fi
@@ -139,6 +148,8 @@ ios_gates() {
   step "iOS: app and test bundles build"
   local udid
   udid="$(check_simulator)"
+  # A simulator still booting refuses to launch the test runner ("failed preflight checks").
+  xcrun simctl bootstatus "$udid" -b >/dev/null
   (cd "$IOS_DIR" && xcodegen generate --quiet)
   local xcode=(-project "$IOS_DIR/ChargeAhead.xcodeproj" -scheme ChargeAhead
     -destination "id=$udid" -derivedDataPath "$CHECK_DIR/derived" -quiet)
@@ -161,12 +172,11 @@ ios_gates() {
       TEST_RUNNER_SNAPSHOT_ARTIFACTS="$CHECK_DIR/snapshot-failures" \
       xcodebuild "${run[@]}" -only-testing:ChargeAheadSnapshotTests \
       -resultBundlePath "$CHECK_DIR/snapshots-$(date +%s).xcresult" \
-      || die "snapshot goldens differ; the failing renders are in $CHECK_DIR/snapshot-failures"
+      || die "snapshot tests failed; differing renders, if any, are in $CHECK_DIR/snapshot-failures"
   fi
 
   if [ -f "$IOS_DIR/Secrets.xcconfig" ] && [ -z "${CI:-}" ]; then
     step "iOS: UI tests (against the backend)"
-    xcrun simctl boot "$udid" 2>/dev/null || true
     # A fresh install: the tests start from an empty garage.
     xcrun simctl uninstall "$udid" org.julakali.chargeahead 2>/dev/null || true
     xcrun simctl privacy "$udid" grant location org.julakali.chargeahead
