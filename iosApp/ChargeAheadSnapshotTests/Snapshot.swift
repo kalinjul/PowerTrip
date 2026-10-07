@@ -6,7 +6,7 @@ import XCTest
 enum SnapshotFrame {
     /// The view at its own size, for markers, rows and sheets.
     case fitting
-    /// A whole screen on an iPhone 17 Pro, safe areas and bars included.
+    /// A whole iPhone 17 Pro screen, safe areas and bars included.
     case phone
 }
 
@@ -27,23 +27,31 @@ func assertLightAndDark<V: View>(
             traits.userInterfaceIdiom = .phone
             traits.displayScale = 3
         }
-        // On the controller, not only in the traits: UIKit's bars read the style from there.
-        let controller = UIHostingController(rootView: view.preferredColorScheme(style == .dark ? .dark : .light))
-        controller.overrideUserInterfaceStyle = style
-        let strategy: Snapshotting<UIViewController, UIImage>
+        let controller = UIHostingController(rootView: view)
+        let size: CGSize
+        let safeArea: UIEdgeInsets
         switch frame {
         case .fitting:
-            strategy = .image(precision: 0.999, perceptualPrecision: 0.98, size: controller.sizeThatFits(in: CGSize(width: 402, height: CGFloat.greatestFiniteMagnitude)), traits: traits)
+            size = controller.sizeThatFits(in: CGSize(width: 402, height: CGFloat.greatestFiniteMagnitude))
+            safeArea = .zero
         case .phone:
-            let iPhone17Pro = ViewImageConfig(
-                safeArea: UIEdgeInsets(top: 62, left: 0, bottom: 34, right: 0),
-                size: CGSize(width: 402, height: 874),
-                traits: traits
-            )
-            ensureKeyWindow()
-            // Off-screen layer rendering leaves the glass bars' titles blank; a real window draws them.
-            strategy = .image(on: iPhone17Pro, drawHierarchyInKeyWindow: true, precision: 0.999, perceptualPrecision: 0.98)
+            size = CGSize(width: 402, height: 874)
+            safeArea = UIEdgeInsets(top: 62, left: 0, bottom: 34, right: 0)
         }
+        ensureKeyWindow()
+        // Drawn off-screen, the glass controls lose their thumbs, edges and bar titles; a real window draws them.
+        let window = Snapshotting<UIViewController, UIImage>.image(
+            on: ViewImageConfig(safeArea: safeArea, size: size, traits: traits),
+            drawHierarchyInKeyWindow: true,
+            precision: 0.999,
+            perceptualPrecision: 0.98
+        )
+        // A window render keeps the wide colour range a PNG drops; compare it the way the golden was stored.
+        let strategy = Snapshotting<UIViewController, UIImage>(
+            pathExtension: window.pathExtension,
+            diffing: window.diffing,
+            asyncSnapshot: { window.snapshot($0).map(\.asStoredPNG) }
+        )
         assertSnapshot(
             of: controller,
             as: strategy,
@@ -66,4 +74,11 @@ private func ensureKeyWindow() {
     window.rootViewController = UIViewController()
     window.makeKeyAndVisible()
     keyWindow = window
+}
+
+private extension UIImage {
+    var asStoredPNG: UIImage {
+        guard let data = pngData(), let stored = UIImage(data: data, scale: scale) else { return self }
+        return stored
+    }
 }
