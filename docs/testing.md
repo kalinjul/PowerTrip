@@ -83,9 +83,9 @@ the app. Under a test host the app starts no Koin graph and no home screen,
 so no backend is needed; tests feed `<Screen>Content` views from
 `Fixtures.swift`. `assertLightAndDark(view, named:, frame:)` writes
 `__Snapshots__/<Class>/<test>.<name>-light|dark.png`; `.phone` renders a
-whole iPhone 17 Pro screen in a real window (the glass bars stay blank when
-drawn off-screen), `.fitting` the view at its own size. German, like the
-Android goldens.
+whole iPhone 17 Pro screen, `.fitting` the view at its own size. Both draw
+in a real window, since off-screen rendering leaves iOS 26's glass controls
+blank. German, like the Android goldens.
 
 Rendering differs between Xcode and simulator versions the way layoutlib
 differs between macOS and Linux, so both are pinned in

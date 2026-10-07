@@ -146,6 +146,10 @@ python3 <skill-dir>/scripts/gradle_run.py run --workflow <id> --scope targeted \
 be a real verification question; quote it and its answer when reporting.
 The wrapper adds `--console=plain --no-scan` itself.
 
+`tools/check.sh` is the other exception: it runs whole gate sets, Gradle
+and Xcode alike. Redirect its log to the scratchpad and read the summary
+lines.
+
 The Swift check stays outside the wrapper, because it isn't Gradle:
 
 ```bash
