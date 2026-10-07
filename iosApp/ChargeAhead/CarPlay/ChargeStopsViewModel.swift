@@ -37,7 +37,7 @@ final class ChargeStopsViewModel: ObservableObject {
     }
 
     var stops: [ChargeStop] {
-        state.stops as? [ChargeStop] ?? []
+        state.stops
     }
 
     func refresh() {

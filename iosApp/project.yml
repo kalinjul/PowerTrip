@@ -28,6 +28,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    # Only our targets: the Swift packages' warnings are not ours to fix.
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
     DEVELOPMENT_TEAM: "" # fill in before the first build in the Xcode project
     # CHARGEAHEAD_BASE_URL and CHARGEAHEAD_TOKEN come only from Secrets.xcconfig:
     # a value here, even an empty one, would override the xcconfig.
