@@ -26,6 +26,7 @@ expect "android" androidApp/src/main/AndroidManifest.xml
 expect "android" shared/src/androidMain/kotlin/X.kt
 expect "android" shared/src/jvmMain/kotlin/X.kt shared/src/jvmTest/kotlin/XTest.kt
 expect "android" tools/screenshots.sh
+expect "ios" .github/workflows/ios-goldens.yml
 expect "android ios" shared/src/commonMain/kotlin/X.kt
 expect "android ios" shared/src/commonMain/composeResources/values-de/strings.xml
 expect "android ios" shared/src/commonTest/kotlin/XTest.kt

@@ -16,7 +16,7 @@ while IFS= read -r path; do
   case "$path" in
     "") ;;
     *.md|docs/*|.claude/*|LICENSE*|.gitignore) ;;
-    iosApp/*|shared/src/iosMain/*|shared/src/iosTest/*|tools/ios-*|tools/check-swift.sh) ios=true ;;
+    iosApp/*|shared/src/iosMain/*|shared/src/iosTest/*|tools/ios-*|tools/check-swift.sh|.github/workflows/ios-goldens.yml) ios=true ;;
     phone-ui/*|ui-tests/*|androidApp/*|shared/src/androidMain/*|shared/src/jvmMain/*|shared/src/jvmTest/*|tools/screenshots.sh|.github/workflows/release.yml) android=true ;;
     *) android=true; ios=true ;;
   esac
