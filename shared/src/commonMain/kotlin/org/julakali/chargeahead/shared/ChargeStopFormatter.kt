@@ -15,6 +15,7 @@ import org.julakali.chargeahead.shared.domain.PriceComponent
 import org.julakali.chargeahead.shared.domain.PriceKind
 import org.julakali.chargeahead.shared.domain.Reachability
 import org.julakali.chargeahead.shared.domain.Weekday
+import org.julakali.chargeahead.shared.domain.UnreachableTrip
 import org.julakali.chargeahead.shared.resources.Res
 import org.julakali.chargeahead.shared.resources.fmt_planned_stop_detail
 import org.julakali.chargeahead.shared.resources.fmt_price_from
@@ -244,6 +245,9 @@ object ChargeStopFormatter {
         )
 
     /** A bare distance for message texts, same rules as the row lines. */
+    fun unreachableMessage(why: UnreachableTrip): String =
+        why.messageResource().let { (resource, args) -> Texts.string(resource, *args) }
+
     fun distanceLabel(distanceKm: Double): String = formatDistanceKm(distanceKm)
 
     // Labels for lines a platform composes itself.

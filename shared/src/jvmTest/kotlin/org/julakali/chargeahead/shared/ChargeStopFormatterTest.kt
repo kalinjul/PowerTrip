@@ -15,6 +15,7 @@ import org.julakali.chargeahead.shared.domain.PriceKind
 import org.julakali.chargeahead.shared.domain.Reachability
 import org.julakali.chargeahead.shared.domain.Tariff
 import org.julakali.chargeahead.shared.domain.Weekday
+import org.julakali.chargeahead.shared.domain.UnreachableTrip
 import java.util.Locale
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -43,6 +44,14 @@ class ChargeStopFormatterTest {
             Connector(ConnectorType.TYPE2, maxPowerKw = 22.0, count = 2),
         ),
     )
+
+    @Test
+    fun `no plan says why, with the kilometre where planning gave up`() {
+        assertEquals("Nach km 120 ist kein Schnelllader mehr erreichbar.", ChargeStopFormatter.unreachableMessage(UnreachableTrip.NoCharger(afterKm = 120.4)))
+        assertEquals(Texts.byKey("plan_failed_no_charger_at_start"), ChargeStopFormatter.unreachableMessage(UnreachableTrip.NoCharger(afterKm = 0.2)))
+        assertEquals(Texts.byKey("plan_failed_no_route"), ChargeStopFormatter.unreachableMessage(UnreachableTrip.NoRoute))
+        assertEquals(Texts.byKey("plan_failed_no_connection"), ChargeStopFormatter.unreachableMessage(UnreachableTrip.NoConnection))
+    }
 
     @Test
     fun primaryLine_belowTenKilometers_showsOneDecimalPlace() {
