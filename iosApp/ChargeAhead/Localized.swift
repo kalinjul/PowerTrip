@@ -5,3 +5,7 @@ import Shared
 func localized(_ key: String, _ args: Any...) -> String {
     Texts.shared.byKey(key: key, args: args)
 }
+
+func localizedPlural(_ key: String, _ quantity: Int, _ args: Any...) -> String {
+    Texts.shared.pluralByKey(key: key, quantity: Int32(quantity), args: args)
+}

@@ -1,7 +1,7 @@
 import UIKit
 import SwiftUI
 
-/// Scene delegate for the phone UI, hosting `ContentView` in a
+/// Scene delegate for the phone UI, hosting `PhoneRoot` in a
 /// `UIHostingController`. Scene selection lives in `AppDelegate.swift`.
 class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
@@ -15,7 +15,7 @@ class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene, !SharedEntry.hostsUnitTests else { return }
 
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = UIHostingController(rootView: HomeMapView())
+        window.rootViewController = UIHostingController(rootView: PhoneRoot())
         self.window = window
         window.makeKeyAndVisible()
     }

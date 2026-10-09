@@ -6,13 +6,8 @@ import org.julakali.chargeahead.shared.data.CoreLocationSource
 import org.julakali.chargeahead.shared.data.DataStoreTripStorage
 import org.julakali.chargeahead.shared.db.DatabaseFactory
 import org.julakali.chargeahead.shared.domain.AppCoroutineDispatchers
-import org.julakali.chargeahead.shared.domain.Destination
-import org.julakali.chargeahead.shared.domain.LatLon
 import org.julakali.chargeahead.shared.domain.LocationSource
 import org.julakali.chargeahead.shared.domain.ReverseGeocoder
-import org.julakali.chargeahead.shared.domain.usecases.PlanTripInteractor
-import org.julakali.chargeahead.shared.domain.TripPlan
-import org.julakali.chargeahead.shared.domain.TripPlanResult
 import org.julakali.chargeahead.shared.domain.TripStorage
 import org.julakali.chargeahead.shared.settings.createSettingsDataStore
 import org.julakali.chargeahead.shared.settings.createTripDataStore
@@ -24,6 +19,14 @@ import org.julakali.chargeahead.shared.ui.CorridorViewModel
 import org.julakali.chargeahead.shared.ui.HomeViewModel
 import org.julakali.chargeahead.shared.ui.SearchViewModel
 import org.julakali.chargeahead.shared.ui.ViewModelHost
+import org.julakali.chargeahead.shared.ui.VehicleEditViewModel
+import org.julakali.chargeahead.shared.ui.TripViewModel
+import org.julakali.chargeahead.shared.ui.PhoneAppViewModel
+import org.julakali.chargeahead.shared.ui.NetworksViewModel
+import org.julakali.chargeahead.shared.ui.LicensesViewModel
+import org.julakali.chargeahead.shared.ui.DrawerViewModel
+import org.julakali.chargeahead.shared.ui.CarDataViewModel
+import org.julakali.chargeahead.shared.ui.ActiveRouteViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -108,14 +111,6 @@ class ChargeStopsWatcher(feature: ChargeStopsFeature) {
     }
 }
 
-/** [TripPlanResult], flattened for Swift. */
-data class TripPlanOutcome(
-    val plan: TripPlan?,
-    val failure: TripPlanFailure?,
-) {
-    enum class TripPlanFailure { NO_VEHICLE, NO_ROUTE, NO_CONNECTION, NO_CHARGER_IN_REACH }
-}
-
 /**
  * The phone screens' ViewModels over [feature]. A SwiftUI owner holds one per
  * screen or sheet and calls [clear] when it goes away.
@@ -126,7 +121,23 @@ class PhoneViewModels(private val feature: ChargeStopsFeature) {
     private val session = koin.phoneSession(feature)
     private val host = ViewModelHost()
 
+    fun phoneApp(): PhoneAppViewModel = host.get { session.get<PhoneAppViewModel> { parametersOf(SavedStateHandle()) } }
+
     fun home(): HomeViewModel = host.get { session.get<HomeViewModel>() }
+
+    fun trip(): TripViewModel = host.get { session.get<TripViewModel>() }
+
+    fun activeRoute(): ActiveRouteViewModel = host.get { session.get<ActiveRouteViewModel>() }
+
+    fun drawer(): DrawerViewModel = host.get { session.get<DrawerViewModel>() }
+
+    fun vehicleEdit(): VehicleEditViewModel = host.get { session.get<VehicleEditViewModel>() }
+
+    fun networks(): NetworksViewModel = host.get { session.get<NetworksViewModel>() }
+
+    fun carData(): CarDataViewModel = host.get { session.get<CarDataViewModel>() }
+
+    fun licenses(): LicensesViewModel = host.get { session.get<LicensesViewModel>() }
 
     fun chargeNow(): ChargeNowViewModel = host.get { session.get<ChargeNowViewModel>() }
 
@@ -140,25 +151,4 @@ class PhoneViewModels(private val feature: ChargeStopsFeature) {
         host.clear()
         session.close()
     }
-}
-
-/** Plans a trip for Swift, which sees [planTrip] as `async`. */
-class TripPlanner {
-
-    private val planTrip: PlanTripInteractor = requireGraph().get()
-
-    suspend fun planTrip(from: LatLon, destination: Destination): TripPlanOutcome =
-        planTrip(PlanTripInteractor.Params(from, destination)).fold(
-            onSuccess = { result ->
-                when (result) {
-                    is TripPlanResult.Planned -> TripPlanOutcome(result.plan, null)
-                    is TripPlanResult.NoVehicle -> TripPlanOutcome(null, TripPlanOutcome.TripPlanFailure.NO_VEHICLE)
-                    is TripPlanResult.NoRoute -> TripPlanOutcome(null, TripPlanOutcome.TripPlanFailure.NO_ROUTE)
-                    is TripPlanResult.NoConnection -> TripPlanOutcome(null, TripPlanOutcome.TripPlanFailure.NO_CONNECTION)
-                    is TripPlanResult.NoChargerInReach ->
-                        TripPlanOutcome(null, TripPlanOutcome.TripPlanFailure.NO_CHARGER_IN_REACH)
-                }
-            },
-            onFailure = { TripPlanOutcome(null, TripPlanOutcome.TripPlanFailure.NO_ROUTE) },
-        )
 }

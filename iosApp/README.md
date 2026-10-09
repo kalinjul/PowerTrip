@@ -1,7 +1,7 @@
 # iosApp
 
-CarPlay integration and a minimal SwiftUI phone UI for the charging-stop
-assistant (as of M1 — see [../ARCHITECTURE.md](../ARCHITECTURE.md) and
+CarPlay integration and the SwiftUI phone app for the charging-stop
+assistant; the phone app has the Android app's screens, built from SwiftUI parts (as of M1 — see [../ARCHITECTURE.md](../ARCHITECTURE.md) and
 [../AGENTS.md](../AGENTS.md)).
 
 ```
@@ -9,16 +9,27 @@ ChargeAhead/
 ├── AppDelegate.swift              Scene routing: phone vs. CarPlay; SharedEntry starts the graph at launch and creates features
 ├── Info.plist                     UIApplicationSceneManifest, permission texts
 ├── ChargeAhead.entitlements       com.apple.developer.carplay-charging
-├── Localized.swift                localized("key"): text from shared's composeResources
+├── Localized.swift                localized("key"), localizedPlural: text from shared's composeResources
+├── Assets.xcassets                app icon and powertrip logo, converted from the Android drawables
 ├── {en,de}.lproj/InfoPlist.strings location permission text, the one native string
 ├── CarPlay/
 │   ├── CarPlaySceneDelegate.swift CPTemplateApplicationSceneDelegate, CPListTemplate
 │   └── ChargeStopsViewModel.swift corridor list for CarPlay (ChargeStopsWatcher)
 └── Phone/
-    ├── HomeMapView.swift          map home, destination search, Jetzt laden — shared ViewModels via SKIE
-    ├── TripPlanView.swift         planned trip and its stops
-    ├── ContentView.swift          platform info
-    └── PhoneSceneDelegate.swift   hosts HomeMapView in a UIHostingController
+    ├── PhoneRoot.swift            the app: ViewModels, events, trip sheet, overlay sheets and alerts
+    ├── HomeContent.swift          map screen: top bar, pills, mode glow, hints (map is a slot)
+    ├── HomeSearch.swift           search bar, destination header, results
+    ├── ChargerMapView.swift       MapKit: charger markers, or the planned route and its stops
+    ├── TripSheet.swift            trip sheet: stop rail, tiles, section picking, unreachable trip
+    ├── ActiveRouteView.swift      the committed trip's page
+    ├── StopDetailSheet.swift      a charger's details
+    ├── ChargeNowSheet.swift       Jetzt laden
+    ├── SettingsView.swift         what Android's drawer holds, plus legal and licences
+    ├── GarageView.swift           car cards, battery levels, adding a car
+    ├── VehicleEditView.swift      a car's values
+    ├── NetworksView.swift         charging networks
+    ├── Theme.swift                brand colours and small shared pieces
+    └── PhoneSceneDelegate.swift   hosts PhoneRoot in a UIHostingController
 project.yml                        XcodeGen spec for the Xcode project
 ```
 
