@@ -193,6 +193,8 @@ ios_gates() {
     # A fresh install: the tests start from an empty garage.
     xcrun simctl uninstall "$udid" org.julakali.chargeahead 2>/dev/null || true
     xcrun simctl privacy "$udid" grant location org.julakali.chargeahead
+    # Planning starts from the current position; Hamburg, like the Android previews.
+    xcrun simctl location "$udid" set 53.5511,9.9937
     TEST_RUNNER_SCREENSHOT_DIR="$CHECK_DIR/uitest-screenshots" \
       xcodebuild "${run[@]}" -only-testing:ChargeAheadUITests
   else

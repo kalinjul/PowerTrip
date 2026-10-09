@@ -80,17 +80,3 @@ extension Fixtures {
         )
     }
 }
-
-extension GarageActions {
-    static let none = GarageActions(
-        vehicleSelected: { _ in },
-        socOpened: {},
-        socChanged: { _ in },
-        socConfirmed: {},
-        socDismissed: {},
-        arrivalOpened: {},
-        arrivalChanged: { _ in },
-        arrivalConfirmed: {},
-        arrivalDismissed: {}
-    )
-}

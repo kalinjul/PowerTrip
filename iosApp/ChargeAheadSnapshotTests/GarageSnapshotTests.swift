@@ -7,11 +7,15 @@ import XCTest
 final class GarageSnapshotTests: XCTestCase {
 
     func testTwoCarsOneSelected() {
-        assertLightAndDark(GarageContent(state: Fixtures.garage(), actions: .none) { EmptyView() }, named: "garage", frame: .phone)
+        assertLightAndDark(NavigationStack { GarageContent(state: Fixtures.garage(), actions: .none) }, named: "garage", frame: .phone)
+    }
+
+    func testOneCar() {
+        assertLightAndDark(NavigationStack { GarageContent(state: Fixtures.garage([Fixtures.id3]), actions: .none) }, named: "garage", frame: .phone)
     }
 
     func testEmptyGarage() {
-        assertLightAndDark(GarageContent(state: Fixtures.garage([], selected: nil), actions: .none) { EmptyView() }, named: "garage", frame: .phone)
+        assertLightAndDark(NavigationStack { GarageContent(state: Fixtures.garage([], selected: nil), actions: .none) }, named: "garage", frame: .phone)
     }
 
     func testBatteryLevelSheet() {
@@ -46,6 +50,34 @@ final class GarageSnapshotTests: XCTestCase {
                 AddCarContent(state: AddCarUiState(query: "Trabant", matches: []), query: .constant("Trabant")) { _ in }
             },
             named: "add-car",
+            frame: .phone
+        )
+    }
+
+    func testVehiclePage() {
+        let vehicle = Fixtures.id3.toProfile()
+        assertLightAndDark(
+            NavigationStack {
+                VehicleEditContent(
+                    state: VehicleEditUiState(vehicle: vehicle, catalog: Fixtures.id3, canRestoreCatalogValues: false, editor: nil, confirmingRemoval: false, removed: false),
+                    actions: .none
+                )
+            },
+            named: "vehicle",
+            frame: .phone
+        )
+    }
+
+    func testOwnVehiclePage() {
+        let own = VehicleKt.customVehicle(name: "Mein Auto")
+        assertLightAndDark(
+            NavigationStack {
+                VehicleEditContent(
+                    state: VehicleEditUiState(vehicle: own, catalog: nil, canRestoreCatalogValues: false, editor: nil, confirmingRemoval: false, removed: false),
+                    actions: .none
+                )
+            },
+            named: "vehicle",
             frame: .phone
         )
     }
