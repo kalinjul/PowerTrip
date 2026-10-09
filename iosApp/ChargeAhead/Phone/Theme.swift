@@ -82,7 +82,7 @@ struct BrandHead: View {
 extension View {
     /// The filled brand button; its label takes the colour that reads on the primary in either theme.
     func brandProminent() -> some View {
-        buttonStyle(.borderedProminent).tint(Brand.primary).foregroundStyle(Brand.onPrimary)
+        modifier(BrandProminent())
     }
 
     /// Liquid Glass where the system has it, a material elsewhere.
@@ -92,6 +92,19 @@ extension View {
             glassEffect(.regular.interactive(), in: shape)
         } else {
             background(.regularMaterial, in: shape)
+        }
+    }
+}
+
+private struct BrandProminent: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        // Disabled, the system's own label colour is the one that reads on its grey fill.
+        if isEnabled {
+            content.buttonStyle(.borderedProminent).tint(Brand.primary).foregroundStyle(Brand.onPrimary)
+        } else {
+            content.buttonStyle(.borderedProminent).tint(Brand.primary)
         }
     }
 }

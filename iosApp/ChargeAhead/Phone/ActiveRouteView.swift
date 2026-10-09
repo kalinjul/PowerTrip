@@ -67,12 +67,13 @@ struct ActiveRouteView: View {
                 .fixedSize()
                 .buttonStyle(.bordered)
                 .tint(Brand.primary)
-                .disabled(!state.canReplan || state.planning)
+                .disabled(!state.canReplan || state.planning || state.trip == nil)
                 .accessibilityIdentifier("replan")
                 Button(role: .destructive, action: onEnd) {
                     Text(localized("active_route_end")).lineLimit(1).minimumScaleFactor(0.9).frame(maxWidth: .infinity, minHeight: 22)
                 }
                 .buttonStyle(.bordered)
+                .disabled(state.trip == nil)
                 .accessibilityIdentifier("end-trip")
             }
             .font(.subheadline.weight(.medium))
