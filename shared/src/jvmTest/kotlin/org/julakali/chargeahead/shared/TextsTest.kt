@@ -3,6 +3,7 @@ package org.julakali.chargeahead.shared
 import java.io.File
 import java.util.Locale
 import org.julakali.chargeahead.shared.resources.Res
+import org.julakali.chargeahead.shared.resources.allPluralStringResources
 import org.julakali.chargeahead.shared.resources.allStringResources
 import org.julakali.chargeahead.shared.resources.cn_title
 import org.julakali.chargeahead.shared.resources.trip_summary_stops
@@ -45,12 +46,27 @@ class TextsTest {
     }
 
     @Test
+    fun `swift looks plurals up by key`() {
+        Locale.setDefault(Locale.GERMANY)
+        assertEquals("3 Stopps", Texts.pluralByKey("trip_summary_stops", 3, listOf(3)))
+    }
+
+    @Test
     fun `every key swift asks for exists`() {
-        val swiftKeys = File("../iosApp/ChargeAhead").walk().filter { it.extension == "swift" }
-            .flatMap { file -> Regex("""localized\(\s*"([a-z_0-9]+)"""").findAll(file.readText()).map { it.groupValues[1] } }
-            .toSet()
+        val swiftKeys = swiftKeys("localized")
         assertTrue(swiftKeys.size > 20, "found only $swiftKeys")
         val missing = swiftKeys - Res.allStringResources.keys
         assertTrue(missing.isEmpty(), "Swift asks for $missing")
     }
+
+    @Test
+    fun `every plural swift asks for exists`() {
+        val missing = swiftKeys("localizedPlural") - Res.allPluralStringResources.keys
+        assertTrue(missing.isEmpty(), "Swift asks for plurals $missing")
+    }
+
+    private fun swiftKeys(function: String): Set<String> =
+        File("../iosApp/ChargeAhead").walk().filter { it.extension == "swift" }
+            .flatMap { file -> Regex(function + """\(\s*"([a-z_0-9]+)"""").findAll(file.readText()).map { it.groupValues[1] } }
+            .toSet()
 }

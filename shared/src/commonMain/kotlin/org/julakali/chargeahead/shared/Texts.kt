@@ -6,6 +6,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getPluralString
 import org.jetbrains.compose.resources.getString
 import org.julakali.chargeahead.shared.resources.Res
+import org.julakali.chargeahead.shared.resources.allPluralStringResources
 import org.julakali.chargeahead.shared.resources.allStringResources
 
 /**
@@ -22,4 +23,7 @@ object Texts {
     /** Swift's way in: the generated accessors are extension properties it can't reach comfortably. */
     fun byKey(key: String, args: List<Any> = emptyList()): String =
         string(requireNotNull(Res.allStringResources[key]) { "no string $key" }, *args.toTypedArray())
+
+    fun pluralByKey(key: String, quantity: Int, args: List<Any> = emptyList()): String =
+        plural(requireNotNull(Res.allPluralStringResources[key]) { "no plural $key" }, quantity, *args.toTypedArray())
 }
