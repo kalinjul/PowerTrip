@@ -3,11 +3,16 @@ import Shared
 
 /// The garage: the cars to swipe through, the selected one's settings, and the two battery levels.
 struct GarageView: View {
-    let viewModels: PhoneViewModels
+    @StateObject private var owner: ViewModelOwner
     let onOpen: (SettingsPage) -> Void
 
+    init(feature: ChargeStopsFeature, onOpen: @escaping (SettingsPage) -> Void) {
+        _owner = StateObject(wrappedValue: ViewModelOwner(feature: feature))
+        self.onOpen = onOpen
+    }
+
     var body: some View {
-        let garage = viewModels.garage()
+        let garage = owner.viewModels.garage()
         Observing(garage.uiState) { state in
             GarageContent(
                 state: state,
@@ -51,53 +56,49 @@ struct GarageContent: View {
     let actions: GarageActions
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                if state.loading {
-                    ProgressView().frame(maxWidth: .infinity, minHeight: 228)
-                } else if let selected = state.selected {
+        List {
+            if state.loading {
+                ProgressView().frame(maxWidth: .infinity, minHeight: 228).listRowBackground(Color.clear)
+            } else if let selected = state.selected {
+                Section {
                     CarPager(vehicles: state.vehicles, selected: selected, fullRangeKm: state.fullRangeKm, onSelect: actions.vehicleSelected)
-                        .padding(.bottom, 16)
-                    SettingsCard {
-                        SettingRow(
-                            systemImage: "slider.horizontal.3",
-                            title: localized("garage_vehicle_row"),
-                            supporting: localized("garage_vehicle_row_hint"),
-                            onTap: actions.vehicleOpened
-                        )
-                        .accessibilityIdentifier("vehicle-edit")
-                    }
-                    .padding(.horizontal, 18)
-                } else {
-                    EmptyGarageCard(onAdd: actions.addOpened)
-                        .padding(.horizontal, 18)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 16, trailing: 0))
+                        .listRowBackground(Color.clear)
                 }
-                if !state.loading {
-                    SettingsCard {
-                        SettingRow(
-                            systemImage: "battery.25percent",
-                            title: localized("garage_soc_title"),
-                            supporting: localized("garage_soc_row_hint"),
-                            value: localized("garage_percent", Int32(state.socPercent.rounded())),
-                            onTap: actions.socOpened
-                        )
-                        .accessibilityIdentifier("level-soc")
-                        Divider().padding(.leading, 52)
-                        SettingRow(
-                            systemImage: "flag",
-                            title: localized("garage_arrival_title"),
-                            supporting: localized("garage_arrival_row_hint"),
-                            value: localized("garage_percent", Int32(state.arrivalSocPercent.rounded())),
-                            onTap: actions.arrivalOpened
-                        )
-                        .accessibilityIdentifier("level-arrival")
+                Section {
+                    Button(action: actions.vehicleOpened) {
+                        LevelRowLabel(systemImage: "slider.horizontal.3", title: localized("garage_vehicle_row"), supporting: localized("garage_vehicle_row_hint"))
                     }
-                    .padding(.horizontal, 18)
+                    .accessibilityIdentifier("vehicle-edit")
+                }
+            } else {
+                Section {
+                    EmptyGarageCard(onAdd: actions.addOpened)
+                        .listRowInsets(EdgeInsets())
                 }
             }
-            .padding(.vertical, 8)
+            if !state.loading {
+                Section {
+                    Button(action: actions.socOpened) {
+                        LabeledContent {
+                            Text(localized("garage_percent", Int32(state.socPercent.rounded()))).levelValue()
+                        } label: {
+                            LevelRowLabel(systemImage: "battery.25percent", title: localized("garage_soc_title"), supporting: localized("garage_soc_row_hint"))
+                        }
+                    }
+                    .accessibilityIdentifier("level-soc")
+                    Button(action: actions.arrivalOpened) {
+                        LabeledContent {
+                            Text(localized("garage_percent", Int32(state.arrivalSocPercent.rounded()))).levelValue()
+                        } label: {
+                            LevelRowLabel(systemImage: "flag", title: localized("garage_arrival_title"), supporting: localized("garage_arrival_row_hint"))
+                        }
+                    }
+                    .accessibilityIdentifier("level-arrival")
+                }
+            }
         }
-        .background(Color(.systemGroupedBackground))
+        .listSectionSpacing(16)
         .navigationTitle(localized("garage_title"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -156,7 +157,6 @@ private struct CarPager: View {
 
     @State private var shownId: String?
 
-    private static let inset: CGFloat = 18
     private static let peek: CGFloat = 16
 
     var body: some View {
@@ -167,7 +167,7 @@ private struct CarPager: View {
                     CarCard(vehicle: vehicle, fullRangeKm: fullRangeKm[vehicle.id]?.doubleValue)
                         .accessibilityElement(children: .combine)
                         .containerRelativeFrame(.horizontal) { width, _ in
-                            width - Self.inset * 2 - (several ? Self.peek : 0)
+                            width - (several ? Self.peek : 0)
                         }
                         .accessibilityIdentifier("vehicle")
                         .accessibilityAddTraits(vehicle.id == selected.id ? .isSelected : [])
@@ -175,7 +175,6 @@ private struct CarPager: View {
             }
             .scrollTargetLayout()
         }
-        .contentMargins(.horizontal, Self.inset, for: .scrollContent)
         .scrollTargetBehavior(.viewAligned)
         .scrollPosition(id: $shownId)
         .scrollClipDisabled()
@@ -258,7 +257,7 @@ private struct EmptyGarageCard: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button(action: onAdd) {
-                Label(localized("garage_add_title"), systemImage: "plus")
+                Label(localized("garage_add_title"), systemImage: "plus").foregroundStyle(Brand.onPrimary)
             }
             .buttonStyle(.borderedProminent)
             .tint(Brand.primary)
@@ -268,66 +267,31 @@ private struct EmptyGarageCard: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
     }
 }
 
-/// A grouped card of setting rows, like an inset List section inside a scroll view.
-struct SettingsCard<Content: View>: View {
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(spacing: 0) { content() }
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
-    }
-}
-
-/// Icon, title, a line under it, the current value; a chevron when it leads to a page.
-struct SettingRow: View {
+/// Grey icon, title, a line under it; the rows of the garage.
+private struct LevelRowLabel: View {
     let systemImage: String
     let title: String
-    var supporting: String?
-    var value: String?
-    var enabled = true
-    var leadsOn = false
-    let onTap: (() -> Void)?
+    let supporting: String
 
     var body: some View {
-        Button {
-            onTap?()
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 18))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).foregroundStyle(.primary)
-                    if let supporting {
-                        Text(supporting).font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 8)
-                if let value {
-                    Text(value)
-                        .font(value.count > 6 ? .subheadline : .title3.weight(.semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(onTap == nil ? Color.secondary : Brand.primary)
-                        .multilineTextAlignment(.trailing)
-                }
-                if leadsOn || (value == nil && onTap != nil) {
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
+        // Fixed colours: inside a List button the hierarchical styles would follow the tint.
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).foregroundStyle(Color(.label))
+                Text(supporting).font(.footnote).foregroundStyle(Color(.secondaryLabel))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+        } icon: {
+            Image(systemName: systemImage).foregroundStyle(Color(.secondaryLabel))
         }
-        .buttonStyle(.plain)
-        .disabled(!enabled || onTap == nil)
-        .opacity(enabled ? 1 : 0.5)
+    }
+}
+
+private extension Text {
+    func levelValue() -> some View {
+        font(.title3.weight(.semibold)).monospacedDigit().foregroundStyle(Brand.primary)
     }
 }
 
@@ -375,19 +339,29 @@ struct LevelSheet: View {
         .padding(24)
         .tint(Brand.primary)
         .presentationDetents([.medium])
+        .onAppear {
+            // Nothing stored yet: start where the slider stands, so apply works without a drag.
+            if percent == nil { onChange(Int((range.first + range.last) / 2)) }
+        }
     }
 }
 
 /// The catalog minus what is already in the garage, searchable; a tap adds the car and selects it.
 struct AddCarView: View {
-    let addCar: AddCarViewModel
+    @StateObject private var owner: ViewModelOwner
     /// An own car has no values yet; the caller opens its page instead of going back.
-    var onCustomCreated: () -> Void = {}
+    let onCustomCreated: () -> Void
     // The field's own echo: read back from the ViewModel, fast typing lost characters.
     @State private var query = ""
     @Environment(\.dismiss) private var dismiss
 
+    init(feature: ChargeStopsFeature, onCustomCreated: @escaping () -> Void) {
+        _owner = StateObject(wrappedValue: ViewModelOwner(feature: feature))
+        self.onCustomCreated = onCustomCreated
+    }
+
     var body: some View {
+        let addCar = owner.viewModels.addCar()
         Observing(addCar.uiState) { state in
             AddCarContent(
                 state: state,
@@ -402,8 +376,7 @@ struct AddCarView: View {
                 }
             )
         }
-        .onChange(of: query) { _, text in addCar.onQueryChanged(query: text) }
-        .onAppear { query = addCar.uiState.value.query }
+        .onChange(of: query) { _, text in owner.viewModels.addCar().onQueryChanged(query: text) }
     }
 }
 

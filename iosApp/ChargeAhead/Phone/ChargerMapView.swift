@@ -92,7 +92,7 @@ struct ChargerMapView: View {
             followedFirstFix = true
             camera = .region(MKCoordinateRegion(center: fix.coordinate, latitudinalMeters: 20_000, longitudinalMeters: 20_000))
         }
-        .onChange(of: plan?.route.points.count) {
+        .onChange(of: plan.map { [$0.destination.name, "\($0.route.distanceKm)", "\($0.stops.count)"] }) {
             if plan != nil { fitRoute() }
         }
         .onChange(of: command) { _, command in

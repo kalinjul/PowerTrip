@@ -1,11 +1,6 @@
 import SwiftUI
 import Shared
 
-/// Where the location handshake stands, as the home screen needs to know it.
-enum LocationAccess {
-    case unknown, granted, denied
-}
-
 struct HomeActions {
     var settings: () -> Void = {}
     /// The location button with no position to centre on.
@@ -35,7 +30,8 @@ struct HomeContent<MapLayer: View, Compass: View>: View {
     let plan: TripPlan?
     let planning: Bool
     let activeRouteEnabled: Bool
-    let locationAccess: LocationAccess
+    /// `nil` until the platform has been asked.
+    let hasLocationPermission: Bool?
     let actions: HomeActions
     @ViewBuilder let map: () -> MapLayer
     @ViewBuilder let compass: () -> Compass
@@ -53,7 +49,8 @@ struct HomeContent<MapLayer: View, Compass: View>: View {
 
             if searching {
                 // While the panel is open the map only takes a dismissing tap.
-                Color.black.opacity(0.001)
+                Color.clear
+                    .contentShape(Rectangle())
                     .ignoresSafeArea()
                     .onTapGesture { actions.searchClosed() }
             }
@@ -98,7 +95,7 @@ struct HomeContent<MapLayer: View, Compass: View>: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
-            if locationAccess == .denied {
+            if hasLocationPermission == false {
                 PermissionCard(onRequest: actions.permissionRequested)
             }
 

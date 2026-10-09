@@ -15,7 +15,7 @@ final class HomeSnapshotTests: XCTestCase {
         plan: TripPlan? = nil,
         planning: Bool = false,
         activeRouteEnabled: Bool = true,
-        access: LocationAccess = .granted
+        hasPermission: Bool? = true
     ) -> some View {
         HomeContent(
             home: state,
@@ -25,7 +25,7 @@ final class HomeSnapshotTests: XCTestCase {
             plan: plan,
             planning: planning,
             activeRouteEnabled: activeRouteEnabled,
-            locationAccess: access,
+            hasLocationPermission: hasPermission,
             actions: .none
         ) {
             Color(.systemGray5)
@@ -47,7 +47,7 @@ final class HomeSnapshotTests: XCTestCase {
     }
 
     func testWithoutPermission() {
-        assertLightAndDark(home(Fixtures.home(position: nil), access: .denied), named: "home", frame: .phone)
+        assertLightAndDark(home(Fixtures.home(position: nil), hasPermission: false), named: "home", frame: .phone)
     }
 
     func testPlanning() {

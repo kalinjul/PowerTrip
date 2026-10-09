@@ -187,7 +187,7 @@ private struct TripButtons: View {
                     .lineLimit(1)
             }
             .buttonStyle(.bordered)
-            .tint(selecting ? Brand.primary : .secondary)
+            .tint(Brand.primary)
             .fixedSize()
         }
         .controlSize(.large)
@@ -314,17 +314,24 @@ private struct RailRow<Dot: View, Content: View>: View {
         let selected = selection.selecting && selection.includes(index: Int32(index))
         HStack(alignment: .top, spacing: 0) {
             ZStack(alignment: .top) {
+                // The line stops short of the dot, so the dot needs no disc in whatever colour the row sits on.
                 GeometryReader { geometry in
-                    let center = Self.dotTop + Self.dotSize / 2
+                    let x = geometry.size.width / 2
+                    let gap: CGFloat = 3
                     Path { path in
-                        path.move(to: CGPoint(x: geometry.size.width / 2, y: index == 0 ? center : 0))
-                        path.addLine(to: CGPoint(x: geometry.size.width / 2, y: index == last ? center : geometry.size.height))
+                        if index != 0 {
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: Self.dotTop - gap))
+                        }
+                        if index != last {
+                            path.move(to: CGPoint(x: x, y: Self.dotTop + Self.dotSize + gap))
+                            path.addLine(to: CGPoint(x: x, y: geometry.size.height))
+                        }
                     }
                     .stroke(Color(.separator), lineWidth: 2)
                 }
                 dot()
                     .frame(width: Self.dotSize, height: Self.dotSize)
-                    .background(Color(.systemBackground), in: Circle())
                     .padding(.top, Self.dotTop)
             }
             .frame(width: 36)
@@ -418,7 +425,7 @@ private struct StopTiles: View {
                         .padding(10)
                         .frame(width: 136, alignment: .leading)
                         .background(
-                            selected ? Brand.primaryContainer : Color(.secondarySystemGroupedBackground),
+                            selected ? Brand.primaryContainer : Color(.secondarySystemBackground),
                             in: RoundedRectangle(cornerRadius: 16)
                         )
                     }

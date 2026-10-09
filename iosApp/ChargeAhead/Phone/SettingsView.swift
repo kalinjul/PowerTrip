@@ -14,8 +14,10 @@ enum SettingsPage: Hashable {
 struct SettingsView: View {
     @StateObject private var owner: ViewModelOwner
     @State private var path: [SettingsPage]
+    private let feature: ChargeStopsFeature
 
     init(feature: ChargeStopsFeature, startPage: SettingsPage?) {
+        self.feature = feature
         _owner = StateObject(wrappedValue: ViewModelOwner(feature: feature))
         _path = State(initialValue: startPage.map { [$0] } ?? [])
     }
@@ -33,12 +35,12 @@ struct SettingsView: View {
             }
             .navigationDestination(for: SettingsPage.self) { page in
                 switch page {
-                case .garage: GarageView(viewModels: owner.viewModels, onOpen: { path.append($0) })
-                case .addCar: AddCarView(addCar: owner.viewModels.addCar(), onCustomCreated: { path = path.dropLast() + [.vehicle] })
-                case .vehicle: VehicleEditView(vehicleEdit: owner.viewModels.vehicleEdit(), onRemoved: { path.removeLast() })
-                case .networks: NetworksView(networks: owner.viewModels.networks())
+                case .garage: GarageView(feature: feature, onOpen: { path.append($0) })
+                case .addCar: AddCarView(feature: feature, onCustomCreated: { path = path.dropLast() + [.vehicle] })
+                case .vehicle: VehicleEditView(feature: feature, onRemoved: { path.removeLast() })
+                case .networks: NetworksView(feature: feature)
                 case .legal: LegalView()
-                case .licenses: LicensesView(licenses: owner.viewModels.licenses())
+                case .licenses: LicensesView(feature: feature)
                 }
             }
         }
@@ -126,6 +128,7 @@ struct SettingsContent: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button(localized("ios_done")) { dismiss() }
+                    .accessibilityIdentifier("settings-done")
             }
         }
     }
@@ -209,9 +212,14 @@ struct LegalView: View {
 
 /// Where the data comes from, each source with its datasets and their licences.
 struct LicensesView: View {
-    let licenses: LicensesViewModel
+    @StateObject private var owner: ViewModelOwner
+
+    init(feature: ChargeStopsFeature) {
+        _owner = StateObject(wrappedValue: ViewModelOwner(feature: feature))
+    }
 
     var body: some View {
+        let licenses = owner.viewModels.licenses()
         Observing(licenses.uiState) { state in
             LicensesContent(state: state, onRetry: { licenses.onRetry() })
         }

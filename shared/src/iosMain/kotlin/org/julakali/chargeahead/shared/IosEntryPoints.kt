@@ -25,7 +25,6 @@ import org.julakali.chargeahead.shared.ui.PhoneAppViewModel
 import org.julakali.chargeahead.shared.ui.NetworksViewModel
 import org.julakali.chargeahead.shared.ui.LicensesViewModel
 import org.julakali.chargeahead.shared.ui.DrawerViewModel
-import org.julakali.chargeahead.shared.ui.CarDataViewModel
 import org.julakali.chargeahead.shared.ui.ActiveRouteViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -134,8 +133,6 @@ class PhoneViewModels(private val feature: ChargeStopsFeature) {
     fun vehicleEdit(): VehicleEditViewModel = host.get { session.get<VehicleEditViewModel>() }
 
     fun networks(): NetworksViewModel = host.get { session.get<NetworksViewModel>() }
-
-    fun carData(): CarDataViewModel = host.get { session.get<CarDataViewModel>() }
 
     fun licenses(): LicensesViewModel = host.get { session.get<LicensesViewModel>() }
 

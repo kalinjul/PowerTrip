@@ -15,18 +15,28 @@ final class ViewModelOwner: ObservableObject {
     }
 }
 
-/// The phone's location and charge state, and the map screen's ViewModels over it.
+/// The phone's location and charge state, and the map screen's ViewModels over it, resolved once.
 final class PhoneSession: ObservableObject {
     let feature: ChargeStopsFeature
-    let viewModels: PhoneViewModels
+    let owner: ViewModelOwner
+    let home: HomeViewModel
+    let trip: TripViewModel
+    let search: SearchViewModel
+    let activeRoute: ActiveRouteViewModel
+    let phoneApp: PhoneAppViewModel
 
     init() {
         feature = SharedEntry.newFeature()
-        viewModels = PhoneViewModels(feature: feature)
+        owner = ViewModelOwner(feature: feature)
+        let viewModels = owner.viewModels
+        home = viewModels.home()
+        trip = viewModels.trip()
+        search = viewModels.search()
+        activeRoute = viewModels.activeRoute()
+        phoneApp = viewModels.phoneApp()
     }
 
     deinit {
-        viewModels.clear()
         feature.close()
     }
 }
@@ -41,6 +51,22 @@ enum PhoneOverlay: Identifiable, Equatable {
     case replanLevel
 
     var id: String { "\(self)" }
+
+    /// What is up: an open level editor or a selected charger come from the ViewModels and win over navigation.
+    /// Over "charge now" the selected charger opens inside that sheet instead.
+    static func shown(
+        navigation: PhoneOverlay?,
+        stopSelected: Bool,
+        startLevelOpen: Bool,
+        arrivalLevelOpen: Bool,
+        replanLevelOpen: Bool
+    ) -> PhoneOverlay? {
+        if startLevelOpen { return .startLevel }
+        if arrivalLevelOpen { return .arrivalLevel }
+        if replanLevelOpen { return .replanLevel }
+        if stopSelected && navigation != .chargeNow { return .stopDetail }
+        return navigation
+    }
 }
 
 enum PhoneAlert: Identifiable {
@@ -56,167 +82,102 @@ enum PhonePage: Hashable {
 
 /// The phone app: the map screen, the trip sheet over it, the active route page and the sheets around them.
 struct PhoneRoot: View {
-    @StateObject private var session = PhoneSession()
-    @StateObject private var location = LocationAuthorization()
+    @StateObject private var session: PhoneSession
+    @StateObject private var location: LocationAuthorization
     @State private var query = ""
     @State private var path: [PhonePage] = []
     @State private var overlay: PhoneOverlay?
     @State private var alert: PhoneAlert?
     @State private var command: CameraCommand?
     @State private var tripDetent: PresentationDetent = TripSheetDetents.peek
-    @Namespace private var mapScope
+
+    init() {
+        let session = PhoneSession()
+        _session = StateObject(wrappedValue: session)
+        _location = StateObject(wrappedValue: LocationAuthorization(phoneApp: session.phoneApp, onSettled: { session.home.onLocateRequested() }))
+    }
 
     var body: some View {
-        let viewModels = session.viewModels
-        let home = viewModels.home()
-        let trip = viewModels.trip()
-        let search = viewModels.search()
-        let activeRoute = viewModels.activeRoute()
-        let phoneApp = viewModels.phoneApp()
-        Observing(home.uiState) { homeState in
-            Observing(trip.uiState) { tripState in
-                Observing(search.uiState) { searchState in
-                    Observing(activeRoute.uiState) { committed in
-                        Observing(phoneApp.uiState) { app in
-                            let context = Context(home: homeState, trip: tripState, committed: committed, layout: app.tripLayout)
-                            NavigationStack(path: $path) {
-                                homeScreen(context, search: searchState)
-                                    .toolbar(.hidden, for: .navigationBar)
-                                    .navigationDestination(for: PhonePage.self) { _ in
-                                        ActiveRouteView(
-                                            state: committed,
-                                            now: Date(),
-                                            actions: activeRouteActions(activeRoute, committed: committed),
-                                            onEnd: { activeRoute.endTrip() }
-                                        )
-                                    }
-                            }
-                            .modifier(PhoneOverlays(
-                                enabled: !context.tripSheetShown(onPage: !path.isEmpty),
-                                overlay: overlayBinding(context),
-                                alert: $alert,
-                                sheet: { overlaySheet($0, context) },
-                                onAddCar: { overlay = .settings(.garage) }
-                            ))
-                            .sheet(isPresented: .constant(context.tripSheetShown(onPage: !path.isEmpty))) {
-                                tripSheet(context)
-                            }
-                        }
-                    }
+        Observing(session.trip.uiState, session.activeRoute.uiState, session.phoneApp.uiState) { trip, committed, app in
+            let onPage = !path.isEmpty
+            let sheetShown = (trip as? TripUiStateSheet) != nil && !onPage
+            NavigationStack(path: $path) {
+                HomeScreen(
+                    session: session,
+                    trip: trip,
+                    committed: committed,
+                    hasLocationPermission: app.hasLocationPermission?.boolValue,
+                    query: $query,
+                    command: $command,
+                    onSettings: { overlay = .settings(nil) },
+                    onChargeNow: { overlay = .chargeNow },
+                    onActiveRoute: { path = [.activeRoute] }
+                )
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: PhonePage.self) { _ in
+                    ActiveRouteView(
+                        state: committed,
+                        now: Date(),
+                        actions: activeRouteActions(committed),
+                        onEnd: { session.activeRoute.endTrip() }
+                    )
                 }
+            }
+            .modifier(PhoneOverlays(
+                session: session,
+                enabled: !sheetShown,
+                trip: trip,
+                committed: committed,
+                onPage: onPage,
+                navigation: $overlay,
+                alert: $alert
+            ))
+            .sheet(isPresented: .constant(sheetShown)) {
+                tripSheet(trip, layout: app.tripLayout, committed: committed)
+            }
+            .onChange(of: app.hasLocationPermission?.boolValue, initial: true) { _, granted in
+                if granted == true { session.home.onLocationPermissionGranted() }
             }
         }
         .tint(Brand.primary)
-        .mapScope(mapScope)
-        .onChange(of: location.access, initial: true) { _, access in
-            switch access {
-            case .granted: home.onLocationPermissionGranted()
-            case .unknown: location.request()
-            case .denied: break
+        .task { await collectTripEvents() }
+        .task { await collectActiveRouteEvents() }
+        .task {
+            for await event in session.phoneApp.event {
+                if let event { location.handle(event) }
             }
         }
-        .task { await collectTripEvents(trip) }
-        .task { await collectActiveRouteEvents(activeRoute) }
-    }
-
-    // MARK: Map screen
-
-    private func homeScreen(_ context: Context, search: SearchUiState) -> some View {
-        let viewModels = session.viewModels
-        let home = viewModels.home()
-        let trip = viewModels.trip()
-        let searchModel = viewModels.search()
-        let sheet = context.sheet
-        let plan = (sheet as? TripUiStatePlanned)?.plan
-        return HomeContent(
-            home: context.home,
-            search: search,
-            query: $query,
-            destination: sheet?.destination,
-            plan: plan,
-            planning: context.trip is TripUiStatePlanning,
-            activeRouteEnabled: context.committed.trip != nil,
-            locationAccess: location.access,
-            actions: HomeActions(
-                settings: { overlay = .settings(nil) },
-                locate: {
-                    if location.access == .granted { home.onLocateRequested() } else { location.request() }
-                },
-                recenter: { moveCamera(to: context.home.position.map { .position($0, meters: 5_000) }) },
-                chargeNow: { overlay = .chargeNow },
-                activeRoute: { path = [.activeRoute] },
-                modeDismissed: { home.onModeDismissed() },
-                searchOpened: { searchModel.onOpened(prefill: nil) },
-                searchClosed: {
-                    query = ""
-                    searchModel.onClosed()
-                },
-                picked: { row in
-                    query = ""
-                    searchModel.onClosed()
-                    trip.plan(destination: row.destination, socPercent: nil)
-                },
-                tripCleared: { trip.clear() },
-                destinationTapped: { moveCamera(to: plan != nil ? .route : sheet.map { .position($0.destination.position, meters: 20_000) }) },
-                permissionRequested: { location.request() },
-                zoomHintTapped: { moveCamera(to: .pillZoom) }
-            )
-        ) {
-            ChargerMapView(
-                position: context.home.position,
-                chargers: context.home.chargers,
-                plan: plan,
-                command: command,
-                bottomInset: sheet != nil ? UIScreen.main.bounds.height * TripSheetDetents.peekFraction : 0,
-                onViewportChanged: { home.onViewportChanged(viewport: $0) },
-                onChargerTapped: { home.onChargerSelected(charger: $0) },
-                onStopTapped: { home.onSiteSelected(site: $0.site) }
-            )
-        } compass: {
-            MapCompass(scope: mapScope)
-                .mapControlVisibility(.automatic)
-        }
-        .onChange(of: query) { _, text in
-            if text != search.query { searchModel.onQueryChanged(query: text) }
-        }
-    }
-
-    private func moveCamera(to target: CameraCommand.Target?) {
-        guard let target else { return }
-        command = CameraCommand(id: (command?.id ?? 0) + 1, target: target)
     }
 
     // MARK: Trip sheet
 
-    private func tripSheet(_ context: Context) -> some View {
-        let trip = session.viewModels.trip()
-        let phoneApp = session.viewModels.phoneApp()
-        let home = session.viewModels.home()
-        let expandable = context.layout == .list && context.trip is TripUiStatePlanned
+    private func tripSheet(_ trip: TripUiState, layout: TripListLayout, committed: ActiveRouteUiState) -> some View {
+        let model = session.trip
+        let expandable = layout == .list && trip is TripUiStatePlanned
         return Group {
-            if let sheet = context.sheet {
+            if let sheet = trip as? TripUiStateSheet {
                 TripSheetContent(
                     trip: sheet,
-                    layout: context.layout,
+                    layout: layout,
                     now: Date(),
                     actions: TripActions(
-                        replan: { trip.onReplanRequested() },
+                        replan: { model.onReplanRequested() },
                         layoutToggled: {
                             tripDetent = TripSheetDetents.peek
-                            phoneApp.onTripLayoutChanged(layout: context.layout == .tiles ? .list : .tiles)
+                            session.phoneApp.onTripLayoutChanged(layout: layout == .tiles ? .list : .tiles)
                         },
-                        selectingToggled: { trip.onSectionSelectingToggled() },
-                        pointPicked: { trip.onSectionPointPicked(index: Int32($0)) },
-                        stopOpened: { home.onSiteSelected(site: $0.site) },
+                        selectingToggled: { model.onSectionSelectingToggled() },
+                        pointPicked: { model.onSectionPointPicked(index: Int32($0)) },
+                        stopOpened: { session.home.onSiteSelected(site: $0.site) },
                         sentToMaps: {
                             guard let planned = sheet as? TripUiStatePlanned else { return }
                             openInMaps(planned.mapsUrl) { opened in
-                                if opened { trip.commit() } else { alert = .message(localized("phone_detail_no_navigation")) }
+                                if opened { model.commit() } else { alert = .message(localized("phone_detail_no_navigation")) }
                             }
-                            trip.onSectionSent()
+                            model.onSectionSent()
                         },
-                        startSocEdit: { trip.onStartSocEditRequested() },
-                        arrivalSocEdit: { trip.onArrivalSocEditRequested() }
+                        startSocEdit: { model.onStartSocEditRequested() },
+                        arrivalSocEdit: { model.onArrivalSocEditRequested() }
                     )
                 )
             }
@@ -226,135 +187,25 @@ struct PhoneRoot: View {
         .presentationDragIndicator(expandable ? .visible : .hidden)
         .interactiveDismissDisabled()
         .modifier(PhoneOverlays(
+            session: session,
             enabled: true,
-            overlay: overlayBinding(context),
-            alert: $alert,
-            sheet: { overlaySheet($0, context) },
-            onAddCar: { overlay = .settings(.garage) }
+            trip: trip,
+            committed: committed,
+            onPage: false,
+            navigation: $overlay,
+            alert: $alert
         ))
-    }
-
-    // MARK: Overlays
-
-    /// What is up: a selected charger or an open level editor comes from the ViewModels, the rest is navigation.
-    private func overlayBinding(_ context: Context) -> Binding<PhoneOverlay?> {
-        let viewModels = session.viewModels
-        let shown: PhoneOverlay? = {
-            if context.home.selectedStop != nil && overlay != .chargeNow { return .stopDetail }
-            if context.sheet?.socInput != nil { return .startLevel }
-            if context.sheet?.arrivalSocInput != nil { return .arrivalLevel }
-            if context.committed.socInput != nil { return .replanLevel }
-            return overlay
-        }()
-        return Binding(
-            get: { shown },
-            set: { value in
-                guard value == nil else { overlay = value; return }
-                switch shown {
-                case .stopDetail: viewModels.home().onSelectedStopDismissed()
-                case .startLevel: viewModels.trip().onStartSocEditDismissed()
-                case .arrivalLevel: viewModels.trip().onArrivalSocEditDismissed()
-                case .replanLevel: viewModels.activeRoute().onSocEditDismissed()
-                default: overlay = nil
-                }
-            }
-        )
-    }
-
-    @ViewBuilder
-    private func overlaySheet(_ shown: PhoneOverlay, _ context: Context) -> some View {
-        let viewModels = session.viewModels
-        let trip = viewModels.trip()
-        switch shown {
-        case .settings(let page):
-            SettingsView(feature: session.feature, startPage: page)
-        case .chargeNow:
-            ChargeNowView(
-                feature: session.feature,
-                onNavigate: { candidate in openNavigation(to: candidate.site.position) },
-                onOpen: { candidate in viewModels.home().onSiteSelected(site: candidate.site) }
-            )
-            .sheet(item: Binding(
-                get: { context.home.selectedStop.map { SelectedStop(stop: $0) } },
-                set: { if $0 == nil { viewModels.home().onSelectedStopDismissed() } }
-            )) { selected in
-                stopDetail(selected.stop, context)
-            }
-            .presentationDetents([.medium, .large])
-        case .stopDetail:
-            if let stop = context.home.selectedStop {
-                stopDetail(stop, context)
-            }
-        case .startLevel:
-            LevelSheet(
-                title: localized("soc_dialog_title"),
-                hint: context.sheet?.socAskedForReplan == true ? localized("soc_dialog_car_silent") : nil,
-                percent: context.sheet?.socInput.flatMap { Int($0) },
-                range: TripPlanKt.SOC_RANGE,
-                applyLabel: localized("trip_soc_confirm"),
-                onChange: { trip.onStartSocInputChanged(input: String($0)) },
-                onApply: { trip.onStartSocConfirmed() },
-                onCancel: { trip.onStartSocEditDismissed() }
-            )
-        case .arrivalLevel:
-            LevelSheet(
-                title: localized("garage_arrival_title"),
-                hint: localized("garage_arrival_sheet_hint"),
-                percent: context.sheet?.arrivalSocInput.flatMap { Int($0) },
-                range: GarageViewModelKt.ARRIVAL_SOC_RANGE,
-                applyLabel: localized("trip_soc_confirm"),
-                onChange: { trip.onArrivalSocInputChanged(input: String($0)) },
-                onApply: { trip.onArrivalSocConfirmed() },
-                onCancel: { trip.onArrivalSocEditDismissed() }
-            )
-        case .replanLevel:
-            let activeRoute = viewModels.activeRoute()
-            LevelSheet(
-                title: localized("soc_dialog_title"),
-                hint: localized("soc_dialog_car_silent"),
-                percent: context.committed.socInput.flatMap { Int($0) },
-                range: TripPlanKt.SOC_RANGE,
-                applyLabel: localized("trip_soc_confirm"),
-                onChange: { activeRoute.onSocInputChanged(input: String($0)) },
-                onApply: { activeRoute.onSocConfirmed() },
-                onCancel: { activeRoute.onSocEditDismissed() }
-            )
-        }
-    }
-
-    private func stopDetail(_ stop: ChargeStop, _ context: Context) -> some View {
-        StopDetailSheet(
-            stop: stop,
-            live: context.home.selectedStopLive,
-            tripLine: tripLine(for: stop, context),
-            onNavigate: {
-                session.viewModels.home().onSelectedStopDismissed()
-                openNavigation(to: stop.site.position)
-            }
-        )
-        .presentationDetents([.medium, .large])
-    }
-
-    /// Arrival and departure, when the charger is a stop of the plan on screen.
-    private func tripLine(for selected: ChargeStop, _ context: Context) -> String? {
-        let plan = path.isEmpty ? (context.sheet as? TripUiStatePlanned)?.plan : context.committed.trip?.plan
-        guard let stop = plan?.stops.first(where: { $0.site.id == selected.site.id }) else { return nil }
-        let now = Date()
-        return localized(
-            "trip_stop_times",
-            etaText(stop.arrivalMinutesFromStart, now: now),
-            etaText(stop.arrivalMinutesFromStart + stop.chargeMinutes, now: now)
-        )
     }
 
     // MARK: Active route
 
-    private func activeRouteActions(_ activeRoute: ActiveRouteViewModel, committed: ActiveRouteUiState) -> TripActions {
-        TripActions(
+    private func activeRouteActions(_ committed: ActiveRouteUiState) -> TripActions {
+        let activeRoute = session.activeRoute
+        return TripActions(
             replan: { activeRoute.onReplanRequested() },
             selectingToggled: { activeRoute.onSectionSelectingToggled() },
             pointPicked: { activeRoute.onSectionPointPicked(index: Int32($0)) },
-            stopOpened: { session.viewModels.home().onSiteSelected(site: $0.site) },
+            stopOpened: { session.home.onSiteSelected(site: $0.site) },
             sentToMaps: {
                 if let url = committed.mapsUrl {
                     openInMaps(url) { opened in
@@ -368,13 +219,13 @@ struct PhoneRoot: View {
 
     // MARK: Events
 
-    private func collectTripEvents(_ trip: TripViewModel) async {
-        for await event in trip.event {
+    private func collectTripEvents() async {
+        for await event in session.trip.event {
             guard let event else { continue }
             switch onEnum(of: event) {
             case .sheetReady:
                 query = ""
-                session.viewModels.search().onClosed()
+                session.search.onClosed()
                 tripDetent = TripSheetDetents.peek
             case .vehicleMissing:
                 alert = .vehicleMissing
@@ -383,12 +234,12 @@ struct PhoneRoot: View {
             case .tripCommitted:
                 path = [.activeRoute]
             }
-            trip.onEventHandled()
+            session.trip.onEventHandled()
         }
     }
 
-    private func collectActiveRouteEvents(_ activeRoute: ActiveRouteViewModel) async {
-        for await event in activeRoute.event {
+    private func collectActiveRouteEvents() async {
+        for await event in session.activeRoute.event {
             guard let event else { continue }
             switch onEnum(of: event) {
             case .replanned:
@@ -400,32 +251,90 @@ struct PhoneRoot: View {
             case .ended:
                 path = []
             }
-            activeRoute.onEventHandled()
+            session.activeRoute.onEventHandled()
         }
-    }
-
-    private func openNavigation(to position: LatLon) {
-        openInMaps(MapsHandoff.shared.navigateUrl(target: position)) { opened in
-            if !opened { alert = .message(localized("phone_detail_no_navigation")) }
-        }
-    }
-
-    /// The states the screens are drawn from, read together.
-    struct Context {
-        let home: HomeUiState
-        let trip: TripUiState
-        let committed: ActiveRouteUiState
-        let layout: TripListLayout
-
-        var sheet: TripUiStateSheet? { trip as? TripUiStateSheet }
-
-        func tripSheetShown(onPage: Bool) -> Bool { sheet != nil && !onPage }
     }
 }
 
-private struct SelectedStop: Identifiable {
-    let stop: ChargeStop
-    var id: String { stop.site.id }
+/// The map screen with its own observation of the map and search state, so a new fix redraws only this.
+private struct HomeScreen: View {
+    let session: PhoneSession
+    let trip: TripUiState
+    let committed: ActiveRouteUiState
+    let hasLocationPermission: Bool?
+    @Binding var query: String
+    @Binding var command: CameraCommand?
+    let onSettings: () -> Void
+    let onChargeNow: () -> Void
+    let onActiveRoute: () -> Void
+
+    @Namespace private var mapScope
+
+    var body: some View {
+        let home = session.home
+        let search = session.search
+        let sheet = trip as? TripUiStateSheet
+        let plan = (sheet as? TripUiStatePlanned)?.plan
+        GeometryReader { geometry in
+            Observing(home.uiState, search.uiState) { homeState, searchState in
+                HomeContent(
+                    home: homeState,
+                    search: searchState,
+                    query: $query,
+                    destination: sheet?.destination,
+                    plan: plan,
+                    planning: trip is TripUiStatePlanning,
+                    activeRouteEnabled: committed.trip != nil,
+                    hasLocationPermission: hasLocationPermission,
+                    actions: HomeActions(
+                        settings: onSettings,
+                        locate: { session.phoneApp.onLocateRequested() },
+                        recenter: { moveCamera(to: homeState.position.map { .position($0, meters: 5_000) }) },
+                        chargeNow: onChargeNow,
+                        activeRoute: onActiveRoute,
+                        modeDismissed: { home.onModeDismissed() },
+                        searchOpened: { search.onOpened(prefill: nil) },
+                        searchClosed: {
+                            query = ""
+                            search.onClosed()
+                        },
+                        picked: { row in
+                            query = ""
+                            search.onClosed()
+                            session.trip.plan(destination: row.destination, socPercent: nil)
+                        },
+                        tripCleared: { session.trip.clear() },
+                        destinationTapped: { moveCamera(to: plan != nil ? .route : sheet.map { .position($0.destination.position, meters: 20_000) }) },
+                        permissionRequested: { session.phoneApp.onLocationPermissionRequested() },
+                        zoomHintTapped: { moveCamera(to: .pillZoom) }
+                    )
+                ) {
+                    ChargerMapView(
+                        position: homeState.position,
+                        chargers: homeState.chargers,
+                        plan: plan,
+                        command: command,
+                        bottomInset: sheet != nil ? (geometry.size.height + geometry.safeAreaInsets.bottom) * TripSheetDetents.peekFraction : 0,
+                        onViewportChanged: { home.onViewportChanged(viewport: $0) },
+                        onChargerTapped: { home.onChargerSelected(charger: $0) },
+                        onStopTapped: { home.onSiteSelected(site: $0.site) }
+                    )
+                } compass: {
+                    MapCompass(scope: mapScope)
+                        .mapControlVisibility(.automatic)
+                }
+                .onChange(of: query) { _, text in
+                    if text != searchState.query { search.onQueryChanged(query: text) }
+                }
+            }
+        }
+        .mapScope(mapScope)
+    }
+
+    private func moveCamera(to target: CameraCommand.Target?) {
+        guard let target else { return }
+        command = CameraCommand(id: (command?.id ?? 0) + 1, target: target)
+    }
 }
 
 enum TripSheetDetents {
@@ -435,42 +344,168 @@ enum TripSheetDetents {
 }
 
 /// The overlay sheet and the alerts, attached to whichever view presents on top right now.
-private struct PhoneOverlays<Sheet: View>: ViewModifier {
+/// It observes the map state itself, so a selected charger doesn't redraw what it is attached to.
+private struct PhoneOverlays: ViewModifier {
+    let session: PhoneSession
     let enabled: Bool
-    let overlay: Binding<PhoneOverlay?>
-    let alert: Binding<PhoneAlert?>
-    @ViewBuilder let sheet: (PhoneOverlay) -> Sheet
-    let onAddCar: () -> Void
+    let trip: TripUiState
+    let committed: ActiveRouteUiState
+    let onPage: Bool
+    @Binding var navigation: PhoneOverlay?
+    @Binding var alert: PhoneAlert?
 
     func body(content: Content) -> some View {
-        content
-            .sheet(item: enabled ? overlay : .constant(nil)) { shown in
-                sheet(shown)
-            }
-            .alert(
-                alertTitle,
-                isPresented: Binding(
-                    get: { enabled && alert.wrappedValue != nil },
-                    set: { if !$0 { alert.wrappedValue = nil } }
-                ),
-                presenting: alert.wrappedValue
-            ) { shown in
-                if case .vehicleMissing = shown {
-                    Button(localized("plan_vehicle_missing_action"), action: onAddCar)
-                    Button(localized("soc_dialog_cancel"), role: .cancel) {}
-                } else {
-                    Button("OK", role: .cancel) {}
+        Observing(session.home.uiState) { home in
+            content
+                .sheet(item: enabled ? binding(home) : .constant(nil)) { shown in
+                    sheet(shown, home)
+                }
+                .alert(
+                    alertTitle,
+                    isPresented: Binding(
+                        get: { enabled && alert != nil },
+                        set: { if !$0 { alert = nil } }
+                    ),
+                    presenting: alert
+                ) { shown in
+                    if case .vehicleMissing = shown {
+                        Button(localized("plan_vehicle_missing_action")) { navigation = .settings(.garage) }
+                        Button(localized("soc_dialog_cancel"), role: .cancel) {}
+                    } else {
+                        Button(localized("ios_ok"), role: .cancel) {}
+                    }
+                }
+        }
+    }
+
+    private var sheetState: TripUiStateSheet? { trip as? TripUiStateSheet }
+
+    private func binding(_ home: HomeUiState) -> Binding<PhoneOverlay?> {
+        let shown = PhoneOverlay.shown(
+            navigation: navigation,
+            stopSelected: home.selectedStop != nil,
+            startLevelOpen: sheetState?.socInput != nil,
+            arrivalLevelOpen: sheetState?.arrivalSocInput != nil,
+            replanLevelOpen: committed.socInput != nil
+        )
+        return Binding(
+            get: { shown },
+            set: { value in
+                guard value == nil else { navigation = value; return }
+                switch shown {
+                case .stopDetail: session.home.onSelectedStopDismissed()
+                case .startLevel: session.trip.onStartSocEditDismissed()
+                case .arrivalLevel: session.trip.onArrivalSocEditDismissed()
+                case .replanLevel: session.activeRoute.onSocEditDismissed()
+                default: navigation = nil
                 }
             }
+        )
+    }
+
+    @ViewBuilder
+    private func sheet(_ shown: PhoneOverlay, _ home: HomeUiState) -> some View {
+        let trip = session.trip
+        switch shown {
+        case .settings(let page):
+            SettingsView(feature: session.feature, startPage: page)
+        case .chargeNow:
+            ChargeNowView(
+                feature: session.feature,
+                onNavigate: { openNavigation(to: $0.site.position) },
+                onOpen: { session.home.onSiteSelected(site: $0.site) }
+            )
+            .sheet(item: Binding(
+                get: { home.selectedStop.map { SelectedStop(stop: $0) } },
+                set: { if $0 == nil { session.home.onSelectedStopDismissed() } }
+            )) { selected in
+                stopDetail(selected.stop, home)
+            }
+            .presentationDetents([.medium, .large])
+        case .stopDetail:
+            if let stop = home.selectedStop {
+                stopDetail(stop, home)
+            }
+        case .startLevel:
+            LevelSheet(
+                title: localized("soc_dialog_title"),
+                hint: sheetState?.socAskedForReplan == true ? localized("soc_dialog_car_silent") : nil,
+                percent: sheetState?.socInput.flatMap { Int($0) },
+                range: TripPlanKt.SOC_RANGE,
+                applyLabel: localized("trip_soc_confirm"),
+                onChange: { trip.onStartSocInputChanged(input: String($0)) },
+                onApply: { trip.onStartSocConfirmed() },
+                onCancel: { trip.onStartSocEditDismissed() }
+            )
+        case .arrivalLevel:
+            LevelSheet(
+                title: localized("garage_arrival_title"),
+                hint: localized("garage_arrival_sheet_hint"),
+                percent: sheetState?.arrivalSocInput.flatMap { Int($0) },
+                range: GarageViewModelKt.ARRIVAL_SOC_RANGE,
+                applyLabel: localized("trip_soc_confirm"),
+                onChange: { trip.onArrivalSocInputChanged(input: String($0)) },
+                onApply: { trip.onArrivalSocConfirmed() },
+                onCancel: { trip.onArrivalSocEditDismissed() }
+            )
+        case .replanLevel:
+            let activeRoute = session.activeRoute
+            LevelSheet(
+                title: localized("soc_dialog_title"),
+                hint: localized("soc_dialog_car_silent"),
+                percent: committed.socInput.flatMap { Int($0) },
+                range: TripPlanKt.SOC_RANGE,
+                applyLabel: localized("trip_soc_confirm"),
+                onChange: { activeRoute.onSocInputChanged(input: String($0)) },
+                onApply: { activeRoute.onSocConfirmed() },
+                onCancel: { activeRoute.onSocEditDismissed() }
+            )
+        }
+    }
+
+    private func stopDetail(_ stop: ChargeStop, _ home: HomeUiState) -> some View {
+        StopDetailSheet(
+            stop: stop,
+            live: home.selectedStopLive,
+            tripLine: tripLine(for: stop),
+            onNavigate: {
+                session.home.onSelectedStopDismissed()
+                openNavigation(to: stop.site.position)
+            }
+        )
+        .presentationDetents([.medium, .large])
+    }
+
+    /// Arrival and departure, when the charger is a stop of the plan on screen.
+    private func tripLine(for selected: ChargeStop) -> String? {
+        let plan = onPage ? committed.trip?.plan : (sheetState as? TripUiStatePlanned)?.plan
+        guard let stop = plan?.stops.first(where: { $0.site.id == selected.site.id }) else { return nil }
+        let now = Date()
+        return localized(
+            "trip_stop_times",
+            etaText(stop.arrivalMinutesFromStart, now: now),
+            etaText(stop.arrivalMinutesFromStart + stop.chargeMinutes, now: now)
+        )
+    }
+
+    private func openNavigation(to position: LatLon) {
+        openInMaps(MapsHandoff.shared.navigateUrl(target: position)) { opened in
+            if !opened { alert = .message(localized("phone_detail_no_navigation")) }
+        }
     }
 
     private var alertTitle: String {
-        switch alert.wrappedValue {
+        switch alert {
         case .vehicleMissing: return localized("plan_vehicle_missing")
         case .message(let text): return text
         case nil: return ""
         }
     }
+}
+
+private struct SelectedStop: Identifiable {
+    let stop: ChargeStop
+    var id: String { stop.site.id }
 }
 
 /// Hands a link to whatever app opens it; `false` when none does.

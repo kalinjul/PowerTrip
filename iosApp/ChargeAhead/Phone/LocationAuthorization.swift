@@ -1,37 +1,64 @@
 import CoreLocation
 import SwiftUI
 import UIKit
+import Shared
 
-/// The when-in-use grant as SwiftUI sees it; the shared pipeline only runs once it is there.
+/// The iOS half of the location handshake: runs what `PhoneAppViewModel` asks for and reports the grant back.
 final class LocationAuthorization: NSObject, ObservableObject, CLLocationManagerDelegate {
-    @Published private(set) var access: LocationAccess = .unknown
-
     private let manager = CLLocationManager()
+    private let phoneApp: PhoneAppViewModel
+    private let onSettled: () -> Void
+    private var asked = false
 
-    override init() {
+    init(phoneApp: PhoneAppViewModel, onSettled: @escaping () -> Void) {
+        self.phoneApp = phoneApp
+        self.onSettled = onSettled
         super.init()
         manager.delegate = self
-        access = Self.access(of: manager.authorizationStatus)
     }
 
-    /// Asks once; after a refusal only the Settings app can grant it.
-    func request() {
-        if manager.authorizationStatus == .notDetermined {
-            manager.requestWhenInUseAuthorization()
-        } else if let settings = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(settings)
+    /// Called whenever the delegate learns the status, launch included: an undecided grant is asked for at once.
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            phoneApp.onLocationPermissionRequested()
+        case let status:
+            let granted = status == .authorizedWhenInUse || status == .authorizedAlways
+            if asked {
+                asked = false
+                phoneApp.onLocationPermissionResult(granted: granted)
+            } else {
+                phoneApp.onLocationPermissionChecked(granted: granted)
+            }
         }
     }
 
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        access = Self.access(of: manager.authorizationStatus)
+    func handle(_ event: PhoneAppEvent) {
+        switch onEnum(of: event) {
+        case .requestLocationPermission:
+            if manager.authorizationStatus == .notDetermined {
+                asked = true
+                manager.requestWhenInUseAuthorization()
+            } else {
+                // After a refusal only the Settings app can grant it.
+                openSettings()
+            }
+        case .checkLocationSettings:
+            Task.detached { [onSettled] in
+                let enabled = CLLocationManager.locationServicesEnabled()
+                await MainActor.run {
+                    if enabled { onSettled() } else { Self.openSettings() }
+                }
+            }
+        }
+        phoneApp.onEventHandled()
     }
 
-    private static func access(of status: CLAuthorizationStatus) -> LocationAccess {
-        switch status {
-        case .authorizedAlways, .authorizedWhenInUse: return .granted
-        case .denied, .restricted: return .denied
-        default: return .unknown
+    private func openSettings() { Self.openSettings() }
+
+    private static func openSettings() {
+        if let settings = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(settings)
         }
     }
 }

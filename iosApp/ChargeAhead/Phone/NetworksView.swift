@@ -3,9 +3,15 @@ import Shared
 
 /// Picking the networks one charges with; edits are staged and committed when the page is left.
 struct NetworksView: View {
-    let networks: NetworksViewModel
+    @StateObject private var owner: ViewModelOwner
     // The field's own echo, as in the add-car search.
     @State private var query = ""
+
+    init(feature: ChargeStopsFeature) {
+        _owner = StateObject(wrappedValue: ViewModelOwner(feature: feature))
+    }
+
+    private var networks: NetworksViewModel { owner.viewModels.networks() }
 
     var body: some View {
         Observing(networks.uiState) { state in

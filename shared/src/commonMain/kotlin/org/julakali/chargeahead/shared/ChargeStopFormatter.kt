@@ -245,10 +245,10 @@ object ChargeStopFormatter {
         )
 
     /** A bare distance for message texts, same rules as the row lines. */
+    fun distanceLabel(distanceKm: Double): String = formatDistanceKm(distanceKm)
+
     fun unreachableMessage(why: UnreachableTrip): String =
         why.messageResource().let { (resource, args) -> Texts.string(resource, *args) }
-
-    fun distanceLabel(distanceKm: Double): String = formatDistanceKm(distanceKm)
 
     // Labels for lines a platform composes itself.
 

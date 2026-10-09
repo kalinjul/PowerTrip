@@ -3,10 +3,16 @@ import Shared
 
 /// The selected car's values, each edited in an alert; the catalog values back, or the car out of the garage.
 struct VehicleEditView: View {
-    let vehicleEdit: VehicleEditViewModel
+    @StateObject private var owner: ViewModelOwner
     let onRemoved: () -> Void
 
+    init(feature: ChargeStopsFeature, onRemoved: @escaping () -> Void) {
+        _owner = StateObject(wrappedValue: ViewModelOwner(feature: feature))
+        self.onRemoved = onRemoved
+    }
+
     var body: some View {
+        let vehicleEdit = owner.viewModels.vehicleEdit()
         Observing(vehicleEdit.uiState) { state in
             VehicleEditContent(
                 state: state,
