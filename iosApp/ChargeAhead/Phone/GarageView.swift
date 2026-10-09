@@ -4,11 +4,11 @@ import Shared
 /// The garage: the cars to swipe through, the selected one's settings, and the two battery levels.
 struct GarageView: View {
     @StateObject private var owner: ViewModelOwner
-    let onOpen: (SettingsPage) -> Void
+    let onAdd: () -> Void
 
-    init(feature: ChargeStopsFeature, onOpen: @escaping (SettingsPage) -> Void) {
+    init(feature: ChargeStopsFeature, onAdd: @escaping () -> Void) {
         _owner = StateObject(wrappedValue: ViewModelOwner(feature: feature))
-        self.onOpen = onOpen
+        self.onAdd = onAdd
     }
 
     var body: some View {
@@ -17,9 +17,8 @@ struct GarageView: View {
             GarageContent(
                 state: state,
                 actions: GarageActions(
+                    addOpened: onAdd,
                     vehicleSelected: { garage.onVehicleSelected(profile: $0) },
-                    vehicleOpened: { onOpen(.vehicle) },
-                    addOpened: { onOpen(.addCar) },
                     socOpened: { garage.onSocSheetOpened() },
                     socChanged: { garage.onSocSheetChanged(percent: Int32($0)) },
                     socConfirmed: { garage.onSocSheetConfirmed() },
@@ -35,9 +34,9 @@ struct GarageView: View {
 }
 
 struct GarageActions {
-    var vehicleSelected: (VehicleProfile) -> Void = { _ in }
-    var vehicleOpened: () -> Void = {}
+    /// From the empty garage: a link inside a list row would take over the whole row.
     var addOpened: () -> Void = {}
+    var vehicleSelected: (VehicleProfile) -> Void = { _ in }
     var socOpened: () -> Void = {}
     var socChanged: (Int) -> Void = { _ in }
     var socConfirmed: () -> Void = {}
@@ -66,7 +65,7 @@ struct GarageContent: View {
                         .listRowBackground(Color.clear)
                 }
                 Section {
-                    Button(action: actions.vehicleOpened) {
+                    NavigationLink(value: SettingsPage.vehicle) {
                         LevelRowLabel(systemImage: "slider.horizontal.3", title: localized("garage_vehicle_row"), supporting: localized("garage_vehicle_row_hint"))
                     }
                     .accessibilityIdentifier("vehicle-edit")
@@ -104,7 +103,7 @@ struct GarageContent: View {
         .toolbar {
             if state.selected != nil {
                 ToolbarItem(placement: .primaryAction) {
-                    Button(action: actions.addOpened) {
+                    NavigationLink(value: SettingsPage.addCar) {
                         Label(localized("garage_add_title"), systemImage: "plus")
                     }
                     .accessibilityIdentifier("garage-add")
@@ -257,10 +256,9 @@ private struct EmptyGarageCard: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button(action: onAdd) {
-                Label(localized("garage_add_title"), systemImage: "plus").foregroundStyle(Brand.onPrimary)
+                Label(localized("garage_add_title"), systemImage: "plus")
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Brand.primary)
+            .brandProminent()
             .padding(.top, 14)
             .accessibilityIdentifier("garage-add")
         }
@@ -331,9 +329,8 @@ struct LevelSheet: View {
             Button(action: onApply) {
                 Text(applyLabel).frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .brandProminent()
             .controlSize(.large)
-            .tint(Brand.primary)
             .disabled(percent == nil)
         }
         .padding(24)

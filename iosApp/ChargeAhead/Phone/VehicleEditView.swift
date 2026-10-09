@@ -91,7 +91,6 @@ struct VehicleEditContent: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(!state.canRestoreCatalogValues)
-                            .opacity(state.canRestoreCatalogValues ? 1 : 0.5)
                             Text(localized(restoreHint))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)

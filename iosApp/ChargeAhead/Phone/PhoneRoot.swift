@@ -5,13 +5,17 @@ import Shared
 /// Holds a set of shared ViewModels for as long as the SwiftUI view that owns it.
 final class ViewModelOwner: ObservableObject {
     let viewModels: PhoneViewModels
+    private let ownedFeature: ChargeStopsFeature?
 
-    init(feature: ChargeStopsFeature) {
+    /// `owningFeature`: the feature is this owner's too, closed after its ViewModels are cleared.
+    init(feature: ChargeStopsFeature, owningFeature: Bool = false) {
         viewModels = PhoneViewModels(feature: feature)
+        ownedFeature = owningFeature ? feature : nil
     }
 
     deinit {
         viewModels.clear()
+        ownedFeature?.close()
     }
 }
 
@@ -27,17 +31,13 @@ final class PhoneSession: ObservableObject {
 
     init() {
         feature = SharedEntry.newFeature()
-        owner = ViewModelOwner(feature: feature)
+        owner = ViewModelOwner(feature: feature, owningFeature: true)
         let viewModels = owner.viewModels
         home = viewModels.home()
         trip = viewModels.trip()
         search = viewModels.search()
         activeRoute = viewModels.activeRoute()
         phoneApp = viewModels.phoneApp()
-    }
-
-    deinit {
-        feature.close()
     }
 }
 

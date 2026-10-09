@@ -15,7 +15,6 @@ final class SettingsSnapshotTests: XCTestCase {
                     filters: ChargeFilters(minPowerKw: 150, slowMode: mode == .ac),
                     mode: mode
                 ),
-                onOpen: { _ in },
                 onMinPower: { _ in },
                 onMode: { _ in }
             )

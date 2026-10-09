@@ -8,9 +8,12 @@ struct ActiveRouteView: View {
     let actions: TripActions
     let onEnd: () -> Void
 
+    // Kept past "Navigieren beenden", so the page keeps its content while it slides out.
+    @State private var lastTrip: CommittedTrip?
+
     var body: some View {
         Group {
-            if let trip = state.trip {
+            if let trip = state.trip ?? lastTrip {
                 VStack(spacing: 0) {
                     summary(trip.plan)
                         .padding(.horizontal, 16)
@@ -29,6 +32,9 @@ struct ActiveRouteView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationBarTitleDisplayMode(.large)
+        .onChange(of: state.trip, initial: true) { _, trip in
+            if let trip { lastTrip = trip }
+        }
     }
 
     private func summary(_ plan: TripPlan) -> some View {
@@ -56,6 +62,7 @@ struct ActiveRouteView: View {
                         }
                         Text(localized("trip_replan")).lineLimit(1)
                     }
+                    .frame(minHeight: 22)
                 }
                 .fixedSize()
                 .buttonStyle(.bordered)
@@ -63,7 +70,7 @@ struct ActiveRouteView: View {
                 .disabled(!state.canReplan || state.planning)
                 .accessibilityIdentifier("replan")
                 Button(role: .destructive, action: onEnd) {
-                    Text(localized("active_route_end")).lineLimit(1).minimumScaleFactor(0.9).frame(maxWidth: .infinity)
+                    Text(localized("active_route_end")).lineLimit(1).minimumScaleFactor(0.9).frame(maxWidth: .infinity, minHeight: 22)
                 }
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("end-trip")

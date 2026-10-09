@@ -28,14 +28,13 @@ struct SettingsView: View {
             Observing(drawer.uiState) { state in
                 SettingsContent(
                     state: state,
-                    onOpen: { path.append($0) },
                     onMinPower: { drawer.onFiltersChanged(filters: state.filters.doCopy(minPowerKw: $0, slowMode: state.filters.slowMode)) },
                     onMode: { drawer.onModeSelected(target: $0) }
                 )
             }
             .navigationDestination(for: SettingsPage.self) { page in
                 switch page {
-                case .garage: GarageView(feature: feature, onOpen: { path.append($0) })
+                case .garage: GarageView(feature: feature, onAdd: { path.append(.addCar) })
                 case .addCar: AddCarView(feature: feature, onCustomCreated: { path = path.dropLast() + [.vehicle] })
                 case .vehicle: VehicleEditView(feature: feature, onRemoved: { path.removeLast() })
                 case .networks: NetworksView(feature: feature)
@@ -49,7 +48,6 @@ struct SettingsView: View {
 
 struct SettingsContent: View {
     let state: DrawerUiState
-    let onOpen: (SettingsPage) -> Void
     let onMinPower: (Double) -> Void
     let onMode: (ChargeMode) -> Void
 
@@ -65,21 +63,15 @@ struct SettingsContent: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 8, trailing: 0))
             }
             Section(localized("drawer_preferences")) {
-                NavigationRow(
-                    systemImage: "car",
-                    title: localized("drawer_car"),
-                    subtitle: state.vehicleName ?? localized("drawer_car_none"),
-                    action: { onOpen(.garage) }
-                )
+                NavigationLink(value: SettingsPage.garage) {
+                    NavigationRowLabel(systemImage: "car", title: localized("drawer_car"), subtitle: state.vehicleName ?? localized("drawer_car_none"))
+                }
                 .accessibilityIdentifier("garage")
-                NavigationRow(
-                    systemImage: "line.3.horizontal.decrease",
-                    title: localized("drawer_networks"),
-                    subtitle: state.preferredNetworkCount > 0
+                NavigationLink(value: SettingsPage.networks) {
+                    NavigationRowLabel(systemImage: "line.3.horizontal.decrease", title: localized("drawer_networks"), subtitle: state.preferredNetworkCount > 0
                         ? localized("drawer_networks_selected", state.preferredNetworkCount)
-                        : localized("drawer_networks_all"),
-                    action: { onOpen(.networks) }
-                )
+                        : localized("drawer_networks_all"))
+                }
             }
             Section(localized("drawer_min_power")) {
                 Picker(localized("drawer_min_power"), selection: Binding(get: { state.filters.minPowerKw }, set: onMinPower)) {
@@ -119,8 +111,12 @@ struct SettingsContent: View {
                 }
             }
             Section(localized("drawer_about")) {
-                NavigationRow(systemImage: "info.circle", title: localized("drawer_legal"), action: { onOpen(.legal) })
-                NavigationRow(systemImage: "doc.text", title: localized("drawer_licenses"), action: { onOpen(.licenses) })
+                NavigationLink(value: SettingsPage.legal) {
+                    NavigationRowLabel(systemImage: "info.circle", title: localized("drawer_legal"))
+                }
+                NavigationLink(value: SettingsPage.licenses) {
+                    NavigationRowLabel(systemImage: "doc.text", title: localized("drawer_licenses"))
+                }
             }
         }
         .navigationTitle(localized("home_settings"))
@@ -134,33 +130,23 @@ struct SettingsContent: View {
     }
 }
 
-/// A list row that opens a page: icon, title, the current value under it, a chevron.
-struct NavigationRow: View {
+/// What a row that opens a page shows: icon, title, the current value under it.
+struct NavigationRowLabel: View {
     let systemImage: String
     let title: String
     var subtitle: String?
-    let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).foregroundStyle(.primary)
-                    if let subtitle {
-                        Text(subtitle).font(.footnote).foregroundStyle(.secondary)
-                    }
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let subtitle {
+                    Text(subtitle).font(.footnote).foregroundStyle(.secondary)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
             }
-            .contentShape(Rectangle())
+        } icon: {
+            Image(systemName: systemImage).foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
     }
 }
 

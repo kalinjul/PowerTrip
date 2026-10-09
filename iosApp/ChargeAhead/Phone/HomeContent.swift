@@ -265,7 +265,6 @@ private struct ModeGlow: View {
             Rectangle()
                 .strokeBorder(Brand.mode(mode), lineWidth: 36)
                 .blur(radius: 28)
-                .opacity(0.75)
                 .phaseAnimator([0.75, 1.0]) { glow, breath in
                     glow.opacity(breath)
                 } animation: { _ in
@@ -314,8 +313,7 @@ private struct PermissionCard: View {
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
             Button(localized("phone_permission_action"), action: onRequest)
-                .buttonStyle(.borderedProminent)
-                .tint(Brand.primary)
+                .brandProminent()
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 20)

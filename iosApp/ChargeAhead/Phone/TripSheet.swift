@@ -179,8 +179,7 @@ private struct TripButtons: View {
                     .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Brand.primary)
+            .brandProminent()
             .accessibilityIdentifier("send-to-maps")
             Button(action: onToggleSelecting) {
                 Text(localized(selecting ? "trip_select_cancel" : "trip_select_section"))

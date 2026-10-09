@@ -80,6 +80,11 @@ struct BrandHead: View {
 }
 
 extension View {
+    /// The filled brand button; its label takes the colour that reads on the primary in either theme.
+    func brandProminent() -> some View {
+        buttonStyle(.borderedProminent).tint(Brand.primary).foregroundStyle(Brand.onPrimary)
+    }
+
     /// Liquid Glass where the system has it, a material elsewhere.
     @ViewBuilder
     func glassBackground<S: Shape>(in shape: S) -> some View {

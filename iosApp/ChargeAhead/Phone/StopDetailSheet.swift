@@ -47,9 +47,8 @@ struct StopDetailSheet: View {
             Button(action: onNavigate) {
                 Label(localized("phone_detail_navigate"), systemImage: "flag.fill").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .brandProminent()
             .controlSize(.large)
-            .tint(Brand.primary)
         }
         .padding(.horizontal, 24)
         .padding(.top, 28)
