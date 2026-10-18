@@ -204,6 +204,7 @@
     <string name="about_dataset_status">Live-Belegung</string>
     <string name="about_dataset_routing">Routen</string>
     <string name="about_dataset_places">Zielsuche</string>
+    <string name="about_dataset_weather">Wetter</string>
     <string name="about_dataset_other">Weitere Daten</string>
 
     <!-- Phone: plan sheet -->

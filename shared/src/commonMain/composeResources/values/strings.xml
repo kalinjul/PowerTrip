@@ -202,6 +202,7 @@
     <string name="about_dataset_status">Live availability</string>
     <string name="about_dataset_routing">Routing</string>
     <string name="about_dataset_places">Place search</string>
+    <string name="about_dataset_weather">Weather</string>
     <string name="about_dataset_other">Other data</string>
 
     <!-- Phone: plan sheet -->

@@ -41,6 +41,7 @@ private fun DatasetDto.toDomain() = Dataset(
         "status" -> DatasetKind.STATUS
         "routing" -> DatasetKind.ROUTING
         "places" -> DatasetKind.PLACES
+        "weather" -> DatasetKind.WEATHER
         else -> DatasetKind.OTHER
     },
     url = url,

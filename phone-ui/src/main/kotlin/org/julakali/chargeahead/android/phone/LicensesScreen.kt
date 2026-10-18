@@ -68,6 +68,7 @@ import org.julakali.chargeahead.shared.resources.about_dataset_places
 import org.julakali.chargeahead.shared.resources.about_dataset_routing
 import org.julakali.chargeahead.shared.resources.about_dataset_sites
 import org.julakali.chargeahead.shared.resources.about_dataset_status
+import org.julakali.chargeahead.shared.resources.about_dataset_weather
 import org.julakali.chargeahead.shared.resources.about_licenses_back_to_top
 import org.julakali.chargeahead.shared.resources.about_licenses_data_sources
 import org.julakali.chargeahead.shared.resources.about_licenses_intro
@@ -247,5 +248,6 @@ private val DatasetKind.label: StringResource
         DatasetKind.STATUS -> Res.string.about_dataset_status
         DatasetKind.ROUTING -> Res.string.about_dataset_routing
         DatasetKind.PLACES -> Res.string.about_dataset_places
+        DatasetKind.WEATHER -> Res.string.about_dataset_weather
         DatasetKind.OTHER -> Res.string.about_dataset_other
     }

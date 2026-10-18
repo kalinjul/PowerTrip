@@ -1,7 +1,7 @@
 package org.julakali.chargeahead.shared.domain
 
 /** What the app takes from a source. */
-enum class DatasetKind { SITES, STATUS, ROUTING, PLACES, OTHER }
+enum class DatasetKind { SITES, STATUS, ROUTING, PLACES, WEATHER, OTHER }
 
 data class License(val name: String, val url: String?)
 
