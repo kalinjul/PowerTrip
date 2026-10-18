@@ -6,9 +6,9 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
-import org.julakali.chargeahead.api.ChargePointStatusDto
-import org.julakali.chargeahead.api.ChargePointStatusRequest
-import org.julakali.chargeahead.api.ChargePointStatusResponse
+import org.julakali.powertrip.api.ChargePointStatusDto
+import org.julakali.powertrip.api.ChargePointStatusRequest
+import org.julakali.powertrip.api.ChargePointStatusResponse
 import org.julakali.chargeahead.shared.domain.ChargePointState
 import org.julakali.chargeahead.shared.domain.ChargePointStatus
 import org.julakali.chargeahead.shared.domain.ChargePointStatusSource

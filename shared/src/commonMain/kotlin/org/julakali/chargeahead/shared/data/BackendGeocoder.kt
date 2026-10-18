@@ -8,8 +8,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
-import org.julakali.chargeahead.api.PlaceDto
-import org.julakali.chargeahead.api.PlacesResponse
+import org.julakali.powertrip.api.PlaceDto
+import org.julakali.powertrip.api.PlacesResponse
 
 /** Destination search through the ChargeAhead backend. */
 class BackendGeocoder(

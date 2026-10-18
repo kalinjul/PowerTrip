@@ -19,16 +19,16 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
-import org.julakali.chargeahead.api.AreaDto
-import org.julakali.chargeahead.api.ChargeSiteDto
-import org.julakali.chargeahead.api.ChargeSitesRequest
-import org.julakali.chargeahead.api.ChargeSitesResponse
-import org.julakali.chargeahead.api.ConnectorDto
-import org.julakali.chargeahead.api.ConnectorTypeDto
-import org.julakali.chargeahead.api.LatLonDto
-import org.julakali.chargeahead.api.NetworkFilterDto
-import org.julakali.chargeahead.api.PriceComponentDto
-import org.julakali.chargeahead.api.TariffDto
+import org.julakali.powertrip.api.AreaDto
+import org.julakali.powertrip.api.ChargeSiteDto
+import org.julakali.powertrip.api.ChargeSitesRequest
+import org.julakali.powertrip.api.ChargeSitesResponse
+import org.julakali.powertrip.api.ConnectorDto
+import org.julakali.powertrip.api.ConnectorTypeDto
+import org.julakali.powertrip.api.LatLonDto
+import org.julakali.powertrip.api.NetworkFilterDto
+import org.julakali.powertrip.api.PriceComponentDto
+import org.julakali.powertrip.api.TariffDto
 
 /** Charging sites from the ChargeAhead backend instead of from a provider directly. */
 class BackendChargeSiteSource(

@@ -353,6 +353,24 @@ the battery at the recuperation share. Energy along the route can fall, so
 `ChargeStopOptimizer` holds the reserve at the summit of every leg rather than
 only where the leg ends.
 
+Each segment may carry the forecast air temperature `T` where and when it is
+reached (`temperatureC`, from the backend's DWD MOSMIX data). The curve and
+the driver's figure describe the WLTC at 23 °C, so 23 °C and a missing
+forecast price the same. Away from it, three terms move:
+
+```
+f2         × (23 + 273.15) / (T + 273.15)            [denser cold air]
+η, r       ÷ (1 + 0.004 · max(0, 10 − T))            [cold pack and drivetrain]
+P_climate  = 0.1 kW/K below 15 °C, above 25 °C       [heating, air conditioning]
+```
+
+`P_climate` adds `P_climate / v` per km outside `k`: heating costs the same
+kilowatts whatever the driver's figure. At 0 °C this comes to about +16 %
+at 120 km/h and +32 % at 50 km/h. The coefficients are generic; they
+are not yet checked against measured winter consumption. Past the end of the
+route, reach is priced at the destination's temperature. The trip list shows
+the first and last segment's temperature at start and destination.
+
 ### 5.1a Charging time
 
 `core/ChargeCurve.kt`. A DC session holds close to its peak while the battery

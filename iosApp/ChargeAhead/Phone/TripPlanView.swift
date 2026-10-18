@@ -40,7 +40,8 @@ struct TripPlanView: View {
                 TripEndRow(
                     title: plan.startAddress ?? localized("trip_start"),
                     time: clockText(0),
-                    levelPercent: nil
+                    levelPercent: nil,
+                    temperatureC: plan.route.startTemperatureC?.doubleValue
                 )
                 ForEach(Array(plan.stops.enumerated()), id: \.element.site.id) { index, stop in
                     TripLegRow(leg: plan.legs[index])
@@ -55,7 +56,8 @@ struct TripPlanView: View {
                 TripEndRow(
                     title: plan.destination.name,
                     time: clockText(plan.totalMinutes),
-                    levelPercent: plan.arrivalSocPercent
+                    levelPercent: plan.arrivalSocPercent,
+                    temperatureC: plan.route.destinationTemperatureC?.doubleValue
                 )
             }
             .listRowSeparator(.hidden)
@@ -87,11 +89,12 @@ struct TripPlanView: View {
 private let tripMarkerSize: CGFloat = 24
 private let tripMarkerGap: CGFloat = 10
 
-/// The trip's start or destination: a pin, the name and one time, the charge level below.
+/// The trip's start or destination: a pin, the name and one time, the charge level and the forecast below.
 private struct TripEndRow: View {
     let title: String
     let time: String
     let levelPercent: Double?
+    let temperatureC: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -103,10 +106,19 @@ private struct TripEndRow: View {
                 Spacer()
                 Text(time).font(.subheadline.weight(.medium)).monospacedDigit()
             }
-            if let levelPercent {
+            if levelPercent != nil || temperatureC != nil {
                 HStack(spacing: 6) {
-                    BatteryLevelIcon(percent: levelPercent)
-                    Text(localized("garage_percent", Int(levelPercent.rounded()))).font(.footnote.weight(.medium))
+                    if let levelPercent {
+                        BatteryLevelIcon(percent: levelPercent)
+                        Text(localized("garage_percent", Int(levelPercent.rounded()))).font(.footnote.weight(.medium))
+                    }
+                    Spacer()
+                    if let temperatureC {
+                        Text(localized("trip_temperature", Int(temperatureC.rounded())))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
                 }
                 .padding(.leading, tripMarkerSize + tripMarkerGap)
             }

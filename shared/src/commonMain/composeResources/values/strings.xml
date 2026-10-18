@@ -234,6 +234,7 @@
     <string name="trip_summary_charging">%1$s charging</string>
     <string name="trip_section_hint_second">Now tap the end point</string>
     <string name="trip_start">Start</string>
+    <string name="trip_temperature">%1$d °C</string>
     <string name="trip_destination">Destination</string>
     <string name="trip_maps_sent">Sent to Google Maps</string>
     <string name="trip_replan">Replan</string>

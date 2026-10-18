@@ -124,10 +124,11 @@ Still open:
      every kilometer driven. Aging it forward over the distance driven
      would be the same calculation that already produces the arrival SoC —
      until then, the UI has to make visible how old the value is.
-   - **Temperature.** Winter costs 20–40 % (heating, battery, air density),
-     and it slows the charging curve as much as it raises consumption — the
-     one factor that hits both halves of the estimate. Needs the same weather
-     source as the headwind.
+   - **Temperature.** Consumption is in: the backend sends the DWD forecast
+     per route segment, and `RoadLoadConsumption` prices heating, denser air
+     and a cold drivetrain (ARCHITECTURE.md §5.1). Still open: a cold pack
+     also slows the charging curve, and the coefficients want checking
+     against measured winter consumption.
    - From M4, the rolling average from actual SoC drop over distance.
 
    Temperature and wind land on `ConsumptionModel`; neither needs another

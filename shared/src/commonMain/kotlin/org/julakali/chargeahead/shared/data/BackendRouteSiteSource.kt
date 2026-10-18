@@ -13,10 +13,10 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
-import org.julakali.chargeahead.api.NetworkFilterDto
-import org.julakali.chargeahead.api.RouteDto
-import org.julakali.chargeahead.api.RouteRequest
-import org.julakali.chargeahead.api.RouteResponse
+import org.julakali.powertrip.api.NetworkFilterDto
+import org.julakali.powertrip.api.RouteDto
+import org.julakali.powertrip.api.RouteRequest
+import org.julakali.powertrip.api.RouteResponse
 
 class BackendRouteSiteSource(
     private val httpClient: HttpClient,
@@ -82,6 +82,7 @@ internal fun RouteDto.toDomain(): Route? {
                 durationMinutes = it.durationMinutes,
                 ascentM = requireNotNull(it.ascentM) { "Route segment at ${it.fromKm} km without its ascent" },
                 descentM = requireNotNull(it.descentM) { "Route segment at ${it.fromKm} km without its descent" },
+                temperatureC = it.temperatureC,
             )
         },
     )
