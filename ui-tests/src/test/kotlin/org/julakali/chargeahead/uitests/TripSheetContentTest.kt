@@ -16,6 +16,7 @@ import org.julakali.chargeahead.android.phone.SocEditing
 import org.julakali.chargeahead.android.phone.TripSheetContent
 import org.julakali.chargeahead.android.phone.etaText
 import org.julakali.chargeahead.shared.domain.PlannedStop
+import org.julakali.chargeahead.shared.domain.RouteSegment
 import org.julakali.chargeahead.shared.domain.SectionSelection
 import org.julakali.chargeahead.shared.domain.TripPlan
 import org.junit.Assert.assertEquals
@@ -35,6 +36,7 @@ import org.julakali.chargeahead.shared.resources.trip_select_cancel
 import org.julakali.chargeahead.shared.resources.trip_select_section
 import org.julakali.chargeahead.shared.resources.trip_send_maps
 import org.julakali.chargeahead.shared.resources.trip_start
+import org.julakali.chargeahead.shared.resources.trip_temperature
 import org.julakali.chargeahead.shared.resources.trip_tile_arrival
 
 /** Tall and wide enough that every row and tile is on screen. */
@@ -153,6 +155,25 @@ class TripSheetContentTest {
         sheet()
         compose.onNodeWithText("23:30").assertIsDisplayed()
         compose.onNodeWithText(compose.string(Res.string.garage_percent, 20)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `start and destination show the forecast temperature`() {
+        val route = Fixtures.plan.route.copy(
+            segments = listOf(
+                RouteSegment(0.0, 400.0, 230.0, 0.0, 0.0, temperatureC = -3.4),
+                RouteSegment(400.0, 390.0, 235.0, 0.0, 0.0, temperatureC = 7.6),
+            ),
+        )
+        sheet(plan = Fixtures.plan.copy(route = route))
+        compose.onNodeWithText(compose.string(Res.string.trip_temperature, -3)).assertIsDisplayed()
+        compose.onNodeWithText(compose.string(Res.string.trip_temperature, 8)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `no temperature without a forecast`() {
+        sheet()
+        compose.onNodeWithText("°C", substring = true).assertDoesNotExist()
     }
 
     @Test

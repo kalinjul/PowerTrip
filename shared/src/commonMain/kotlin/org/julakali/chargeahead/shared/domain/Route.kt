@@ -10,6 +10,8 @@ data class RouteSegment(
     val durationMinutes: Double,
     val ascentM: Double,
     val descentM: Double,
+    /** Forecast air temperature where and when the stretch is reached; `null` without a forecast. */
+    val temperatureC: Double? = null,
 ) {
     val averageSpeedKmh: Double
         get() = if (durationMinutes <= 0.0) 0.0 else distanceKm / durationMinutes * 60.0
@@ -33,6 +35,10 @@ data class Route(
     init {
         require(points.size >= 2) { "A route needs at least two points" }
     }
+
+    val startTemperatureC: Double? get() = segments.firstOrNull()?.temperatureC
+
+    val destinationTemperatureC: Double? get() = segments.lastOrNull()?.temperatureC
 }
 
 /** A charge site beside a route. */

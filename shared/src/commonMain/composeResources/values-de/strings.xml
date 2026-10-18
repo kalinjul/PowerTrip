@@ -204,6 +204,7 @@
     <string name="about_dataset_status">Live-Belegung</string>
     <string name="about_dataset_routing">Routen</string>
     <string name="about_dataset_places">Zielsuche</string>
+    <string name="about_dataset_weather">Wetter</string>
     <string name="about_dataset_other">Weitere Daten</string>
 
     <!-- Phone: plan sheet -->
@@ -236,6 +237,7 @@
     <string name="trip_summary_charging">%1$s laden</string>
     <string name="trip_section_hint_second">Jetzt den Endpunkt antippen</string>
     <string name="trip_start">Start</string>
+    <string name="trip_temperature">%1$d °C</string>
     <string name="trip_destination">Ziel</string>
     <string name="trip_maps_sent">An Google Maps übergeben</string>
     <string name="trip_replan">Neu planen</string>

@@ -3,7 +3,7 @@ package org.julakali.chargeahead.shared.data
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
-import org.julakali.chargeahead.api.NetworksResponse
+import org.julakali.powertrip.api.NetworksResponse
 import org.julakali.chargeahead.shared.domain.Network
 import org.julakali.chargeahead.shared.domain.NetworkListSource
 

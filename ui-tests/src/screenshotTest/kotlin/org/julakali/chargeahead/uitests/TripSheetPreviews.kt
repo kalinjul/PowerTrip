@@ -20,13 +20,15 @@ import org.julakali.chargeahead.shared.domain.UnreachableTrip
 import org.julakali.chargeahead.shared.ui.TripUiState
 import androidx.compose.foundation.layout.Column
 import org.julakali.chargeahead.android.phone.headerLine
+import org.julakali.chargeahead.shared.domain.RouteSegment
 import org.julakali.chargeahead.shared.domain.SectionSelection
+import org.julakali.chargeahead.shared.domain.TripPlan
 
 @Composable
-private fun Sheet(layout: TripListLayout, selection: SectionSelection = SectionSelection()) {
+private fun Sheet(layout: TripListLayout, selection: SectionSelection = SectionSelection(), plan: TripPlan = SamplePlan) {
     SheetBox {
         TripSheetContent(
-            plan = SamplePlan,
+            plan = plan,
             startSocPercent = 80.0,
             layout = layout,
             selection = selection,
@@ -44,6 +46,21 @@ private fun Sheet(layout: TripListLayout, selection: SectionSelection = SectionS
 @Preview(locale = "de", showBackground = true)
 @Composable
 fun TripSheetList() = Sheet(TripListLayout.LIST)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetListWithTemperatures() = Sheet(
+    TripListLayout.LIST,
+    plan = SamplePlan.copy(
+        route = SamplePlan.route.copy(
+            segments = listOf(
+                RouteSegment(0.0, 388.0, 226.0, 0.0, 0.0, temperatureC = -3.4),
+                RouteSegment(388.0, 388.0, 226.0, 0.0, 0.0, temperatureC = 7.6),
+            ),
+        ),
+    ),
+)
 
 @PreviewTest
 @Preview(locale = "de", showBackground = true)

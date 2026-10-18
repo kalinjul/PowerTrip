@@ -3,7 +3,7 @@ package org.julakali.chargeahead.shared.core
 import org.julakali.chargeahead.shared.domain.RoadLoad
 import org.julakali.chargeahead.shared.domain.Route
 import org.julakali.chargeahead.shared.domain.VehicleProfile
-import org.julakali.chargeahead.vehicle.ConsumptionModel as VehiclePhysics
+import org.julakali.powertrip.vehicle.ConsumptionModel as VehiclePhysics
 
 /**
  * How much energy a stretch of a route costs.
@@ -37,9 +37,9 @@ class ConstantConsumption(private val kwhPer100Km: Double) : ConsumptionModel {
 
 /**
  * Prices each stretch of the route from the car's road-load curve at that
- * stretch's speed, plus the metres it climbs and drops. The driver's
- * consumption is read as the WLTP figure: the curve is scaled so the WLTP
- * cycle reproduces it.
+ * stretch's speed and outside temperature, plus the metres it climbs and
+ * drops. The driver's consumption is read as the WLTP figure: the curve is
+ * scaled so the WLTP cycle reproduces it, at the cycle's 23 °C.
  */
 class RoadLoadConsumption(vehicle: VehicleProfile) : ConsumptionModel {
 
@@ -47,21 +47,32 @@ class RoadLoadConsumption(vehicle: VehicleProfile) : ConsumptionModel {
     private val correction = vehicle.consumptionKwhPer100Km / roadLoad.wltpKwhPer100Km
     private val kwhPerMetreOfHeight = roadLoad.massKg * GRAVITY / JOULES_PER_KWH
 
-    /** Battery energy per 100 km on level ground at a stretch averaging [speedKmh]. */
-    fun kwhPer100KmAt(speedKmh: Double): Double =
-        (wheelKwhPerKm(speedKmh) / roadLoad.drivetrainEfficiency + overheadKwhPerKm(speedKmh)) * 100.0
+    /** Battery energy per 100 km on level ground at a stretch averaging [speedKmh]; no [temperatureC] prices it at 23 °C. */
+    fun kwhPer100KmAt(speedKmh: Double, temperatureC: Double? = null): Double =
+        (wheelKwhPerKm(speedKmh, temperatureC) / efficiency(temperatureC) + overheadKwhPerKm(speedKmh, temperatureC)) * 100.0
 
-    /** What the wheels have to push against road and air, per km. */
-    private fun wheelKwhPerKm(speedKmh: Double): Double =
-        correction * roadLoad.forceN(clamp(speedKmh)) * 1000.0 / JOULES_PER_KWH
+    /** What the wheels have to push against road and air, per km; cold air is denser. */
+    private fun wheelKwhPerKm(speedKmh: Double, temperatureC: Double?): Double {
+        val speed = clamp(speedKmh)
+        val denserAir = roadLoad.f2 * speed * speed * (airDensityFactor(temperatureC) - 1.0)
+        return correction * (roadLoad.forceN(speed) + denserAir) * 1000.0 / JOULES_PER_KWH
+    }
 
-    /** Auxiliaries and speed changes, per km; neither is offset by going downhill. */
-    private fun overheadKwhPerKm(speedKmh: Double): Double {
+    private fun efficiency(temperatureC: Double?) = roadLoad.drivetrainEfficiency / coldLossFactor(temperatureC)
+
+    private fun recuperation(temperatureC: Double?) = roadLoad.recuperationShare / coldLossFactor(temperatureC)
+
+    /**
+     * Auxiliaries and speed changes, per km; neither is offset by going
+     * downhill. Heating and cooling are the same kilowatts in every car, so
+     * the driver's figure does not scale them.
+     */
+    private fun overheadKwhPerKm(speedKmh: Double, temperatureC: Double?): Double {
         val speed = clamp(speedKmh)
         val auxiliary = roadLoad.auxiliaryPowerKw / speed
         val acceleration = VehiclePhysics.ROTATING_MASS_FACTOR * roadLoad.massKg * kineticJoulesPerKgAndMetre(speed) *
-            (1.0 / roadLoad.drivetrainEfficiency - roadLoad.recuperationShare) / 3600.0
-        return correction * (auxiliary + acceleration)
+            (1.0 / efficiency(temperatureC) - recuperation(temperatureC)) / 3600.0
+        return correction * (auxiliary + acceleration) + climateKw(temperatureC) / speed
     }
 
     // A stretch averaging walking pace is a jam; the auxiliary term divides by the speed.
@@ -72,10 +83,10 @@ class RoadLoadConsumption(vehicle: VehicleProfile) : ConsumptionModel {
      * (negative: falls). Height lost first stands in for the motor; only what
      * is left beyond that goes through recuperation.
      */
-    private fun pieceKwh(km: Double, speedKmh: Double, riseM: Double): Double {
-        val wheel = wheelKwhPerKm(speedKmh) * km + riseM * kwhPerMetreOfHeight
-        val battery = if (wheel >= 0.0) wheel / roadLoad.drivetrainEfficiency else wheel * roadLoad.recuperationShare
-        return battery + overheadKwhPerKm(speedKmh) * km
+    private fun pieceKwh(km: Double, speedKmh: Double, riseM: Double, temperatureC: Double?): Double {
+        val wheel = wheelKwhPerKm(speedKmh, temperatureC) * km + riseM * kwhPerMetreOfHeight
+        val battery = if (wheel >= 0.0) wheel / efficiency(temperatureC) else wheel * recuperation(temperatureC)
+        return battery + overheadKwhPerKm(speedKmh, temperatureC) * km
     }
 
     override fun energyKwh(route: Route, fromKm: Double, toKm: Double): Double {
@@ -126,7 +137,7 @@ class RoadLoadConsumption(vehicle: VehicleProfile) : ConsumptionModel {
         // this the planner would think every route ends exactly at the range
         // limit and would plan a stop for a trip that comfortably makes it.
         if (!empty && budget > 0.0) {
-            reached += budget / (kwhPer100KmAt(averageSpeedKmh(route)) / 100.0)
+            reached += budget / (kwhPer100KmAt(averageSpeedKmh(route), route.destinationTemperatureC) / 100.0)
         }
         return reached
     }
@@ -152,16 +163,17 @@ class RoadLoadConsumption(vehicle: VehicleProfile) : ConsumptionModel {
             if (segment.fromKm >= to) break
 
             val speed = segment.averageSpeedKmh
+            val temperature = segment.temperatureC
             val height = segment.ascentM + segment.descentM
             val climbKm = if (height > 0.0) segment.distanceKm * segment.ascentM / height else segment.distanceKm
             val climbEnd = segment.fromKm + climbKm
 
             val climbOverlap = minOf(climbEnd, to) - maxOf(segment.fromKm, from)
-            if (climbOverlap > 0.0) action(climbOverlap, pieceKwh(climbKm, speed, segment.ascentM) / climbKm)
+            if (climbOverlap > 0.0) action(climbOverlap, pieceKwh(climbKm, speed, segment.ascentM, temperature) / climbKm)
             val dropOverlap = minOf(segmentEnd, to) - maxOf(climbEnd, from)
             if (dropOverlap > 0.0) {
                 val dropKm = segment.distanceKm - climbKm
-                action(dropOverlap, pieceKwh(dropKm, speed, -segment.descentM) / dropKm)
+                action(dropOverlap, pieceKwh(dropKm, speed, -segment.descentM, temperature) / dropKm)
             }
 
             covered = minOf(segmentEnd, to)
@@ -170,7 +182,7 @@ class RoadLoadConsumption(vehicle: VehicleProfile) : ConsumptionModel {
 
         // Segments that stop short of the route's length — the contract rules it
         // out, but a gap must not silently cost nothing.
-        if (covered < to) action(to - covered, kwhPer100KmAt(averageSpeedKmh(route)) / 100.0)
+        if (covered < to) action(to - covered, kwhPer100KmAt(averageSpeedKmh(route), route.destinationTemperatureC) / 100.0)
     }
 
     private fun averageSpeedKmh(route: Route): Double =
@@ -185,6 +197,38 @@ class RoadLoadConsumption(vehicle: VehicleProfile) : ConsumptionModel {
         const val JOULES_PER_KWH = 3_600_000.0
     }
 }
+
+private const val WLTP_TEST_TEMPERATURE_C = 23.0
+private const val COLDEST_C = -25.0
+private const val HOTTEST_C = 45.0
+
+private fun Double?.withinRange(): Double = (this ?: WLTP_TEST_TEMPERATURE_C).coerceIn(COLDEST_C, HOTTEST_C)
+
+/** Air density against the WLTP test's, which the curve was measured at. */
+private fun airDensityFactor(temperatureC: Double?): Double =
+    (WLTP_TEST_TEMPERATURE_C + KELVIN) / (temperatureC.withinRange() + KELVIN)
+
+/** A cold pack and drivetrain lose more on the way to the wheels and take back less when braking. */
+private fun coldLossFactor(temperatureC: Double?): Double =
+    1.0 + COLD_LOSS_PER_KELVIN * (COLD_LOSS_BELOW_C - temperatureC.withinRange()).coerceAtLeast(0.0)
+
+/** Heating or air conditioning on top of the auxiliaries the curve already carries. */
+private fun climateKw(temperatureC: Double?): Double {
+    val outside = temperatureC.withinRange()
+    return when {
+        outside < HEATING_BELOW_C -> HEATING_KW_PER_KELVIN * (HEATING_BELOW_C - outside)
+        outside > COOLING_ABOVE_C -> COOLING_KW_PER_KELVIN * (outside - COOLING_ABOVE_C)
+        else -> 0.0
+    }
+}
+
+private const val KELVIN = 273.15
+private const val COLD_LOSS_BELOW_C = 10.0
+private const val COLD_LOSS_PER_KELVIN = 0.004
+private const val HEATING_BELOW_C = 15.0
+private const val HEATING_KW_PER_KELVIN = 0.1
+private const val COOLING_ABOVE_C = 25.0
+private const val COOLING_KW_PER_KELVIN = 0.1
 
 /** The backend's typical curve for a car without one, scaled until the WLTC reproduces [wltpKwhPer100Km]. */
 internal fun genericRoadLoad(wltpKwhPer100Km: Double): RoadLoad {

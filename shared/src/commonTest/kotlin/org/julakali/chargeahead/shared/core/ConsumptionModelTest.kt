@@ -6,8 +6,8 @@ import org.julakali.chargeahead.shared.domain.RoadLoad
 import org.julakali.chargeahead.shared.domain.Route
 import org.julakali.chargeahead.shared.domain.RouteSegment
 import org.julakali.chargeahead.shared.domain.VehicleProfile
-import org.julakali.chargeahead.vehicle.ConsumptionModel as VehiclePhysics
-import org.julakali.chargeahead.vehicle.RoadLoad as ForceCurve
+import org.julakali.powertrip.vehicle.ConsumptionModel as VehiclePhysics
+import org.julakali.powertrip.vehicle.RoadLoad as ForceCurve
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -29,8 +29,17 @@ class ConsumptionModelTest {
         segments = segments,
     )
 
-    private fun segment(fromKm: Double, distanceKm: Double, speedKmh: Double, ascentM: Double = 0.0, descentM: Double = 0.0) =
-        RouteSegment(fromKm, distanceKm, distanceKm / speedKmh * 60.0, ascentM, descentM)
+    private fun segment(
+        fromKm: Double,
+        distanceKm: Double,
+        speedKmh: Double,
+        ascentM: Double = 0.0,
+        descentM: Double = 0.0,
+        temperatureC: Double? = null,
+    ) = RouteSegment(fromKm, distanceKm, distanceKm / speedKmh * 60.0, ascentM, descentM, temperatureC)
+
+    private fun winterShare(speedKmh: Double, temperatureC: Double) =
+        model.kwhPer100KmAt(speedKmh, temperatureC) / model.kwhPer100KmAt(speedKmh) - 1.0
 
     /** Battery energy to lift [model]'s generic 2000 kg by [metres]. */
     private fun liftKwh(metres: Double) = 2000.0 * 9.81 * metres / 3_600_000.0 / 0.94
@@ -251,5 +260,59 @@ class ConsumptionModelTest {
         val budget = model.energyKwh(hilly, 10.0, 250.0)
 
         assertEquals(250.0, model.reachKm(hilly, 10.0, budget), 1e-6)
+    }
+
+    @Test
+    fun `the WLTP test temperature costs the same as no forecast`() {
+        assertEquals(model.kwhPer100KmAt(30.0), model.kwhPer100KmAt(30.0, 23.0), 1e-9)
+        assertEquals(model.kwhPer100KmAt(130.0), model.kwhPer100KmAt(130.0, 23.0), 1e-9)
+    }
+
+    @Test
+    fun `winter costs a fifth to two fifths more`() {
+        assertTrue(winterShare(120.0, 0.0) in 0.12..0.25, "${winterShare(120.0, 0.0)} at 120 km/h")
+        assertTrue(winterShare(50.0, 0.0) in 0.2..0.45, "${winterShare(50.0, 0.0)} at 50 km/h")
+    }
+
+    /** Heating is paid per hour, so it weighs most where the hours are long. */
+    @Test
+    fun `cold weighs most in slow driving`() {
+        assertTrue(winterShare(30.0, -5.0) > winterShare(130.0, -5.0))
+    }
+
+    @Test
+    fun `colder is never cheaper`() {
+        val temperatures = (20 downTo -25).map { it.toDouble() }
+
+        temperatures.zipWithNext().forEach { (warmer, colder) ->
+            assertTrue(model.kwhPer100KmAt(80.0, colder) >= model.kwhPer100KmAt(80.0, warmer), "$colder against $warmer")
+        }
+    }
+
+    @Test
+    fun `a hot day costs the air conditioning but less than winter`() {
+        assertTrue(winterShare(50.0, 35.0) > 0.0)
+        assertTrue(winterShare(50.0, 35.0) < winterShare(50.0, 0.0))
+    }
+
+    @Test
+    fun `each segment is priced at its own temperature`() {
+        val cooling = route(
+            distanceKm = 100.0,
+            averageSpeedKmh = 100.0,
+            segments = listOf(segment(0.0, 50.0, 100.0, temperatureC = 15.0), segment(50.0, 50.0, 100.0, temperatureC = -5.0)),
+        )
+
+        assertEquals(model.kwhPer100KmAt(100.0, 15.0) / 10.0, model.energyKwh(cooling, 10.0, 20.0), 1e-9)
+        assertEquals(model.kwhPer100KmAt(100.0, -5.0) / 10.0, model.energyKwh(cooling, 60.0, 70.0), 1e-9)
+    }
+
+    @Test
+    fun `reach past the end of the route is priced at the destination's temperature`() {
+        val frosty = route(100.0, 100.0, listOf(segment(0.0, 100.0, 100.0, temperatureC = -5.0)))
+
+        val reach = model.reachKm(frosty, 0.0, model.energyKwh(frosty, 0.0, 100.0) + 10.0)
+
+        assertEquals(100.0 + 10.0 / model.kwhPer100KmAt(100.0, -5.0) * 100.0, reach, 1e-6)
     }
 }

@@ -67,6 +67,16 @@ class BackendRouteSiteLiveContractTest {
         assertTrue(descent - ascent in -100.0..250.0, "$ascent m up, $descent m down")
     }
 
+    /** The DWD forecast covers Bavaria for days ahead, so a drive starting now has one everywhere. */
+    @Test
+    fun everySegmentCarriesAPlausibleTemperature() {
+        if (skip()) return
+
+        val temperatures = found().route.segments.map { it.temperatureC }
+
+        assertTrue(temperatures.all { it != null && it in -40.0..50.0 }, "Temperatures $temperatures")
+    }
+
     @Test
     fun theSitesLieAlongTheRouteInDrivingOrder() {
         if (skip()) return

@@ -3,9 +3,9 @@ package org.julakali.chargeahead.shared.data
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
-import org.julakali.chargeahead.api.DataSourceDto
-import org.julakali.chargeahead.api.DataSourcesResponse
-import org.julakali.chargeahead.api.DatasetDto
+import org.julakali.powertrip.api.DataSourceDto
+import org.julakali.powertrip.api.DataSourcesResponse
+import org.julakali.powertrip.api.DatasetDto
 import org.julakali.chargeahead.shared.domain.DataSource
 import org.julakali.chargeahead.shared.domain.DataSourceDirectory
 import org.julakali.chargeahead.shared.domain.Dataset
@@ -41,6 +41,7 @@ private fun DatasetDto.toDomain() = Dataset(
         "status" -> DatasetKind.STATUS
         "routing" -> DatasetKind.ROUTING
         "places" -> DatasetKind.PLACES
+        "weather" -> DatasetKind.WEATHER
         else -> DatasetKind.OTHER
     },
     url = url,

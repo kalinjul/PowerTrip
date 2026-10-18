@@ -28,7 +28,8 @@ class BackendDataSourceDirectoryTest {
                   "datasets": [
                     {"kind": "status", "url": "https://mobilithek.info/offers/1",
                      "license": {"name": "CC BY 4.0", "url": "https://creativecommons.org/licenses/by/4.0/"}},
-                    {"kind": "weather"}
+                    {"kind": "weather"},
+                    {"kind": "satellite"}
                   ]
                 }]}
                 """.trimIndent(),
@@ -50,6 +51,7 @@ class BackendDataSourceDirectoryTest {
                     "https://mobilithek.info/offers/1",
                     License("CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/"),
                 ),
+                Dataset(DatasetKind.WEATHER, null, null),
                 // An unknown kind from a newer backend is kept, not dropped.
                 Dataset(DatasetKind.OTHER, null, null),
             ),

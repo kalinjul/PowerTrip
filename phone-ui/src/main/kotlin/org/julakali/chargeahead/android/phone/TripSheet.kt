@@ -114,6 +114,7 @@ import org.julakali.chargeahead.shared.resources.trip_soc_edit
 import org.julakali.chargeahead.shared.resources.trip_stop_missing
 import org.julakali.chargeahead.shared.resources.trip_start
 import org.julakali.chargeahead.shared.resources.trip_summary_charging
+import org.julakali.chargeahead.shared.resources.trip_temperature
 import org.julakali.chargeahead.shared.resources.trip_summary_distance
 import org.julakali.chargeahead.shared.resources.trip_summary_stops
 import org.julakali.chargeahead.shared.resources.trip_tile_arrival
@@ -354,6 +355,7 @@ private fun StopCards(
                 time = etaText(context, 0.0, departure),
                 level = startSocPercent,
                 levelUnknown = stringResource(Res.string.trip_dep_now_unknown),
+                temperatureC = plan.route.startTemperatureC,
                 selected = picked(0),
                 onClick = if (selecting) ({ onPickPoint(0) }) else socEditing?.onEditStartSoc,
                 editDescription = socEditing?.let { stringResource(Res.string.trip_soc_edit) },
@@ -379,6 +381,7 @@ private fun StopCards(
                     title = plan.destination.name,
                     time = etaText(context, plan.totalMinutes, departure),
                     level = plan.arrivalSocPercent,
+                    temperatureC = plan.route.destinationTemperatureC,
                     selected = picked(last),
                     onClick = if (selecting) ({ onPickPoint(last) }) else socEditing?.onEditArrivalSoc,
                     editDescription = socEditing?.let { stringResource(Res.string.trip_arrival_soc_edit) },
@@ -388,7 +391,7 @@ private fun StopCards(
     }
 }
 
-/** The trip's start or destination: a pin, the name and one time, the charge level below. */
+/** The trip's start or destination: a pin, the name and one time, the charge level and the forecast below. */
 @Composable
 private fun EndRow(
     title: String,
@@ -399,9 +402,10 @@ private fun EndRow(
     level: Double? = null,
     /** Stands in for an unknown [level]; without either the row has no second line. */
     levelUnknown: String? = null,
+    temperatureC: Double? = null,
     selected: Boolean = false,
 ) {
-    val hasLevelLine = level != null || levelUnknown != null
+    val hasSecondLine = level != null || levelUnknown != null || temperatureC != null
     Column(
         verticalArrangement = Arrangement.spacedBy(LINE_GAP),
         modifier = Modifier
@@ -425,10 +429,10 @@ private fun EndRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = MARKER_GAP).weight(1f),
             )
-            if (!hasLevelLine) EditPen(editDescription)
+            if (!hasSecondLine) EditPen(editDescription)
             time?.let { ClockText(it) }
         }
-        if (hasLevelLine) {
+        if (hasSecondLine) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -441,6 +445,10 @@ private fun EndRow(
                     MetaLine(levelUnknown)
                 }
                 EditPen(editDescription)
+                if (temperatureC != null) {
+                    Spacer(Modifier.weight(1f))
+                    MetaLine(stringResource(Res.string.trip_temperature, temperatureC.roundToInt()))
+                }
             }
         }
     }

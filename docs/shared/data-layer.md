@@ -147,7 +147,7 @@ The backend assigns each site its network (`ChargeSite.networkKey`) and lists
 the networks worth offering (`/v1/networks`). `NetworkCatalog` is the old
 shipped list and is no longer used.
 
-The contract module `org.julakali.chargeahead:api-model` comes from the
+The contract module `org.julakali.powertrip:api-model` comes from the
 backend's own Maven repository, which needs `chargeahead.maven.user` and
 `chargeahead.maven.password` in `~/.gradle/gradle.properties`.
 
