@@ -43,6 +43,7 @@ import org.julakali.chargeahead.shared.domain.MapsHandoff
 import org.julakali.chargeahead.shared.domain.ChargeSite
 import org.julakali.chargeahead.shared.resources.Res
 import org.julakali.chargeahead.shared.resources.active_route_end
+import org.julakali.chargeahead.shared.resources.active_route_show_on_map
 import org.julakali.chargeahead.shared.resources.addcar_custom_named
 import org.julakali.chargeahead.shared.resources.drawer_car
 import org.julakali.chargeahead.shared.resources.garage_add_title
@@ -240,6 +241,48 @@ class PhoneAppFlowTest {
         waitForTextGone(compose.string(Res.string.active_route_end))
         compose.onNodeWithText(pill).assertIsNotEnabled()
         assertNull(harness.trips.state.value.committed)
+    }
+
+    @Test
+    fun `the active route page's map button shows the route on the home map until it is cleared`() {
+        launch()
+        val pill = compose.string(Res.string.home_pill_active_route)
+        val end = compose.string(Res.string.active_route_end)
+        val showOnMap = compose.string(Res.string.active_route_show_on_map)
+        searchAndPick()
+        waitForTrip()
+        compose.onNodeWithText(compose.string(Res.string.trip_send_maps)).performClick()
+        nextStartedUrl()
+        waitForText(end)
+
+        compose.onNodeWithContentDescription(showOnMap).performClick()
+        waitForTextGone(end)
+        // The header names the committed destination, and the pills stay.
+        compose.onNodeWithText("München", substring = true).assertIsDisplayed()
+        compose.onNodeWithText(chargeNowPill()).assertIsDisplayed()
+        compose.onNodeWithText(searchHint()).assertDoesNotExist()
+
+        // The pill leads to the list, and back from there to the route on the map.
+        compose.onNodeWithText(pill).performClick()
+        waitForText(end)
+        pressBack()
+        waitForTextGone(end)
+        compose.onNodeWithText("München", substring = true).assertIsDisplayed()
+
+        // The x only takes the route off the map; the trip stays under way.
+        compose.onNodeWithContentDescription(compose.string(Res.string.home_trip_clear)).performClick()
+        waitForText(searchHint())
+        assertNotNull(harness.trips.state.value.committed)
+
+        // So does back.
+        compose.onNodeWithText(pill).performClick()
+        waitForText(end)
+        compose.onNodeWithContentDescription(showOnMap).performClick()
+        waitForTextGone(end)
+        compose.onNodeWithText(searchHint()).assertDoesNotExist()
+        pressBack()
+        waitForText(searchHint())
+        assertNotNull(harness.trips.state.value.committed)
     }
 
     /** ModalDrawerSheet only handles back when it is given the drawer state. */

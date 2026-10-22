@@ -101,7 +101,7 @@ import org.julakali.chargeahead.shared.resources.phone_permission_message
 import org.julakali.chargeahead.shared.resources.phone_status_location_unavailable
 import org.julakali.chargeahead.shared.resources.plan_planning
 
-private enum class HomeMode { BROWSING, SEARCHING, TRIP }
+private enum class HomeMode { BROWSING, SEARCHING, TRIP, ACTIVE_ROUTE }
 
 /** The map screen with its state holder attached. */
 @Composable
@@ -109,8 +109,10 @@ fun HomeRoute(
     /** `null` until the platform has been asked. */
     hasPermission: Boolean?,
     planningInProgress: Boolean,
-    /** The planned trip: its route replaces the browsing markers. */
+    /** The planned trip, or the committed one shown on the map: its route replaces the browsing markers. */
     trip: TripPlan?,
+    /** [trip] is the committed one: no trip sheet, and the pills stay. */
+    activeRouteOnMap: Boolean,
     /** Replaces the search bar; there even when no plan reached it. */
     destination: Destination?,
     /** The trip sheet's peek, so the route fits above it. */
@@ -150,6 +152,7 @@ fun HomeRoute(
         uiState = uiState,
         search = searchUi,
         trip = trip,
+        activeRouteOnMap = activeRouteOnMap,
         destination = destination,
         hasPermission = hasPermission,
         planningInProgress = planningInProgress,
@@ -212,9 +215,12 @@ fun HomeScreen(
     onClearTrip: () -> Unit,
     modifier: Modifier = Modifier,
     onFloatingControlsHeight: (Dp) -> Unit = {},
+    /** [trip] is the committed one: no trip sheet, and the pills stay. */
+    activeRouteOnMap: Boolean = false,
 ) {
     val homeMode = when {
         search.expanded -> HomeMode.SEARCHING
+        trip != null && activeRouteOnMap -> HomeMode.ACTIVE_ROUTE
         trip != null -> HomeMode.TRIP
         else -> HomeMode.BROWSING
     }
@@ -230,7 +236,7 @@ fun HomeScreen(
             HomeGoogleMap(
                 position = uiState.position,
                 // The route replaces the browsing markers.
-                chargers = if (homeMode == HomeMode.TRIP) emptyList() else uiState.chargers,
+                chargers = if (homeMode == HomeMode.TRIP || homeMode == HomeMode.ACTIVE_ROUTE) emptyList() else uiState.chargers,
                 route = route,
                 bottomInset = mapBottomInset,
                 hasLocationPermission = hasPermission == true,
@@ -408,7 +414,7 @@ fun HomeScreen(
             }
         }
 
-        if (homeMode == HomeMode.BROWSING) {
+        if (homeMode == HomeMode.BROWSING || homeMode == HomeMode.ACTIVE_ROUTE) {
             val density = LocalDensity.current
             DisposableEffect(Unit) { onDispose { onFloatingControlsHeight(0.dp) } }
             Column(
@@ -423,7 +429,7 @@ fun HomeScreen(
                         onFloatingControlsHeight(with(density) { (screenHeight - buttons.boundsInRoot().top).toDp() })
                     },
             ) {
-                if (uiState.belowMinZoom) {
+                if (uiState.belowMinZoom && homeMode == HomeMode.BROWSING) {
                     // Tapping the hint lands on full markers, not on the dot tier.
                     ZoomHintChip { scope.launch { camera.animate(CameraUpdateFactory.zoomTo(PILL_ZOOM)) } }
                 }

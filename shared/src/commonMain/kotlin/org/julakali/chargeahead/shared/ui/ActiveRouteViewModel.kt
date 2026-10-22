@@ -5,13 +5,14 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.julakali.chargeahead.shared.ChargeStopsFeature
+import org.julakali.chargeahead.shared.combine
+import org.julakali.chargeahead.shared.domain.Destination
 import org.julakali.chargeahead.shared.domain.CommittedTrip
 import org.julakali.chargeahead.shared.domain.LatLon
 import org.julakali.chargeahead.shared.domain.mapsUrl
@@ -34,6 +35,8 @@ data class ActiveRouteUiState(
     val startPosition: LatLon? = null,
     /** The charge-level prompt before a re-plan; `null` while closed. */
     val socInput: String? = null,
+    /** The trip's route is drawn on the home map. */
+    val shownOnMap: Boolean = false,
 ) {
     /** Re-planning needs to know where we are. */
     val canReplan: Boolean get() = trip != null && startPosition != null
@@ -57,12 +60,15 @@ class ActiveRouteViewModel(
     private val feature: ChargeStopsFeature,
     private val replanCommittedTrip: ReplanCommittedTripInteractor,
     private val endTrip: EndTripInteractor,
-    trips: TripRepository,
+    private val trips: TripRepository,
 ) : ViewModel() {
 
     private val selection = MutableStateFlow(SectionSelection())
     private val socEditor = MutableStateFlow<String?>(null)
     private val events = MutableStateFlow<ActiveRouteEvent?>(null)
+
+    // Held by destination: a re-plan stays on the map, a trip ended elsewhere doesn't hand it on.
+    private val mapShownFor = MutableStateFlow<Destination?>(null)
 
     val event: StateFlow<ActiveRouteEvent?> = events.asStateFlow()
 
@@ -72,8 +78,10 @@ class ActiveRouteViewModel(
         replanCommittedTrip.inProgress,
         feature.currentFix,
         socEditor,
-    ) { trip, sectionSelection, isPlanning, fix, socInput ->
-        ActiveRouteUiState(trip, sectionSelection, isPlanning, fix?.position, socInput)
+        mapShownFor,
+    ) { trip, sectionSelection, isPlanning, fix, socInput, shownFor ->
+        val shownOnMap = trip != null && trip.plan.destination == shownFor
+        ActiveRouteUiState(trip, sectionSelection, isPlanning, fix?.position, socInput, shownOnMap)
         // Seeded from the stores: the page's own ViewModel is born on the tap, an empty
         // first value would slide in an empty page.
     }.stateIn(
@@ -146,6 +154,14 @@ class ActiveRouteViewModel(
     /** After a section went to Maps the mode ends. */
     fun onSectionSent() {
         selection.value = SectionSelection()
+    }
+
+    fun onShowOnMap() {
+        mapShownFor.value = trips.state.value.committed?.plan?.destination
+    }
+
+    fun onMapHidden() {
+        mapShownFor.value = null
     }
 
     fun onEventHandled() {
