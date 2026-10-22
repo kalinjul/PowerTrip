@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -26,6 +30,7 @@ import org.julakali.chargeahead.shared.domain.ChargeSite
 import org.julakali.chargeahead.shared.domain.PlannedStop
 import org.julakali.chargeahead.shared.domain.VehiclePreset
 import org.julakali.chargeahead.shared.resources.Res
+import org.julakali.chargeahead.shared.resources.active_route_show_on_map
 import org.julakali.chargeahead.shared.resources.active_route_title
 import org.julakali.chargeahead.shared.resources.cardata_title
 import org.julakali.chargeahead.shared.resources.drawer_legal
@@ -53,6 +58,8 @@ fun PhoneNavDisplay(
     onTripEnded: () -> Unit,
     /** The committed destination's name, the active route page's title. */
     activeRouteTitle: String?,
+    /** The active route page's map button: the page closes, and the home map shows the route. */
+    onShowActiveRouteOnMap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     NavDisplay(
@@ -128,7 +135,18 @@ fun PhoneNavDisplay(
             }
 
             entry<ActiveRoute> {
-                Page(title = activeRouteTitle ?: stringResource(Res.string.active_route_title), onBack = navigator::back) { pagePadding ->
+                Page(
+                    title = activeRouteTitle ?: stringResource(Res.string.active_route_title),
+                    onBack = navigator::back,
+                    actions = {
+                        IconButton(onClick = {
+                            onShowActiveRouteOnMap()
+                            navigator.back()
+                        }) {
+                            Icon(Icons.Outlined.Map, contentDescription = stringResource(Res.string.active_route_show_on_map))
+                        }
+                    },
+                ) { pagePadding ->
                     ActiveRouteRoute(
                         onOpenStop = onOpenStop,
                         onSendToMaps = onSendToMaps,

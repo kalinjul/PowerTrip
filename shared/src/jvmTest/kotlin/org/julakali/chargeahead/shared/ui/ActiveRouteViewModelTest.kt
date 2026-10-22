@@ -41,6 +41,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -202,6 +203,49 @@ class ActiveRouteViewModelTest {
 
         assertNull(trips.state.value.committed)
         assertEquals(ActiveRouteEvent.Ended, viewModel.event.value)
+    }
+
+    @Test
+    fun `the trip shows on the map until it is hidden`() = runBlocking {
+        commitFromHamburg()
+        val viewModel = viewModel()
+        assertFalse(viewModel.uiState.first { it.trip != null }.shownOnMap)
+
+        viewModel.onShowOnMap()
+        assertTrue(viewModel.uiState.first { it.shownOnMap }.shownOnMap)
+
+        viewModel.onMapHidden()
+        assertFalse(viewModel.uiState.first { !it.shownOnMap }.shownOnMap)
+    }
+
+    @Test
+    fun `a re-plan stays on the map`() = runBlocking {
+        commitFromHamburg()
+        feature.locate()
+        val viewModel = viewModel()
+        viewModel.uiState.first { it.trip != null }
+        viewModel.onShowOnMap()
+
+        viewModel.replan()
+        withTimeout(5_000) { viewModel.event.first { it != null } }
+
+        val state = withTimeout(5_000) { viewModel.uiState.first { it.trip?.plan == plan(hannover) } }
+        assertTrue(state.shownOnMap)
+    }
+
+    @Test
+    fun `the next trip does not inherit the map`() = runBlocking {
+        commitFromHamburg()
+        val viewModel = viewModel()
+        viewModel.uiState.first { it.trip != null }
+        viewModel.onShowOnMap()
+
+        trips.update { it.ended() }
+        val berlin = Destination("Berlin", LatLon(52.52, 13.405))
+        trips.update { it.committed(CommittedTrip(plan(hamburg).copy(destination = berlin), startSocPercent = 60.0, committedAtEpochMillis = 2L)) }
+
+        val state = withTimeout(5_000) { viewModel.uiState.first { it.trip?.plan?.destination == berlin } }
+        assertFalse(state.shownOnMap)
     }
 
     @Test

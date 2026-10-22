@@ -134,6 +134,7 @@
     <string name="active_route_end">End navigation</string>
     <string name="active_route_ended">Navigation ended</string>
     <string name="active_route_replanned">Route replanned from here</string>
+    <string name="active_route_show_on_map">Show on map</string>
     <string name="soc_dialog_car_silent">Your car isn't reporting its battery level. Pick the current value to replan the route from here.</string>
     <string name="home_settings">Settings</string>
     <string name="home_search_hint">Where to?</string>

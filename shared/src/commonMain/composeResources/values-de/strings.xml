@@ -136,6 +136,7 @@
     <string name="active_route_end">Navigieren beenden</string>
     <string name="active_route_ended">Navigation beendet</string>
     <string name="active_route_replanned">Route von hier neu geplant</string>
+    <string name="active_route_show_on_map">Auf der Karte zeigen</string>
     <string name="soc_dialog_car_silent">Das Auto meldet keinen Ladestand. Bitte den aktuellen Wert wählen, damit die Route von hier neu geplant wird.</string>
     <string name="home_settings">Einstellungen</string>
     <string name="home_search_hint">Wohin soll's gehen?</string>

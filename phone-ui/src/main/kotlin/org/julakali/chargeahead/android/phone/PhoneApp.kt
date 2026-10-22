@@ -84,6 +84,8 @@ fun PhoneApp(librariesRes: Int) {
     // Kept past "Navigieren beenden", so the page keeps its name while it slides out.
     var activeRouteTitle by remember { mutableStateOf<String?>(null) }
     committedUi.trip?.plan?.destination?.name?.let { activeRouteTitle = it }
+    // A planned trip takes the map; the committed one comes back once that is cleared.
+    val activeRouteOnMap = committedUi.trip?.takeIf { committedUi.shownOnMap && sheet == null }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -154,10 +156,15 @@ fun PhoneApp(librariesRes: Int) {
             HomeRoute(
                 hasPermission = phoneAppUi.hasLocationPermission,
                 planningInProgress = tripUi is TripUiState.Planning,
-                trip = planned?.plan,
-                destination = sheet?.destination,
+                trip = planned?.plan ?: activeRouteOnMap?.plan,
+                activeRouteOnMap = activeRouteOnMap != null,
+                destination = sheet?.destination ?: activeRouteOnMap?.plan?.destination,
                 // The fit runs the moment the trip appears; the sheet is still rising then.
-                mapBottomInset = if (sheet != null) tripPeekHeight() else 0.dp,
+                mapBottomInset = when {
+                    sheet != null -> tripPeekHeight()
+                    activeRouteOnMap != null -> floatingControlsHeight
+                    else -> 0.dp
+                },
                 onRequestPermission = phoneAppViewModel::onLocationPermissionRequested,
                 onLocate = phoneAppViewModel::onLocateRequested,
                 onSettings = { scope.launch { drawerState.open() } },
@@ -165,11 +172,11 @@ fun PhoneApp(librariesRes: Int) {
                 activeRouteEnabled = committedUi.trip != null,
                 onActiveRoute = { navigator.openFromRoot(ActiveRoute) },
                 onStopTapped = { index ->
-                    planned?.plan?.stops?.getOrNull(index - 1)?.let { homeViewModel.onSiteSelected(it.site) }
+                    (planned?.plan ?: activeRouteOnMap?.plan)?.stops?.getOrNull(index - 1)?.let { homeViewModel.onSiteSelected(it.site) }
                 },
-                // A stop opened from the active route page belongs to the committed plan, not to one being looked at.
+                // A stop opened from the active route, on its page or the map, belongs to the committed plan.
                 tripLineFor = { selected ->
-                    val committed = committedUi.trip?.takeIf { navigator.backStack.lastOrNull() == ActiveRoute }
+                    val committed = activeRouteOnMap ?: committedUi.trip?.takeIf { navigator.backStack.lastOrNull() == ActiveRoute }
                     if (committed != null) {
                         committed.plan.stopLine(context, selected, committed.departureTime())
                     } else {
@@ -178,7 +185,8 @@ fun PhoneApp(librariesRes: Int) {
                 },
                 // No vehicle? Planning reports it as an event.
                 onPick = tripViewModel::plan,
-                onClearTrip = tripViewModel::clear,
+                // Only takes the committed route off the map; the trip stays under way.
+                onClearTrip = if (activeRouteOnMap != null) activeRouteViewModel::onMapHidden else tripViewModel::clear,
                 // Navigating to one of the plan's stops is committing, as sending the plan is.
                 onOpenMaps = { stop, link ->
                     val ofPlan = navigator.backStack.lastOrNull() != ActiveRoute &&
@@ -205,6 +213,7 @@ fun PhoneApp(librariesRes: Int) {
         onSendToMaps = ::sendToMaps,
         onTripEnded = { snackbar.show(scope, Texts.string(Res.string.active_route_ended)) },
         activeRouteTitle = activeRouteTitle,
+        onShowActiveRouteOnMap = activeRouteViewModel::onShowOnMap,
         modifier = Modifier.fillMaxSize(),
     )
 
@@ -217,6 +226,7 @@ fun PhoneApp(librariesRes: Int) {
             searchUi.expanded -> searchViewModel::onClosed
             planned != null && sheetState.currentValue == SheetValue.Expanded -> ::collapseTripSheet
             sheet != null -> tripViewModel::clear
+            activeRouteOnMap != null -> activeRouteViewModel::onMapHidden
             else -> null
         },
     )
