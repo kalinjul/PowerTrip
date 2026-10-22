@@ -31,6 +31,8 @@ data class Route(
     val distanceKm: Double,
     val durationMinutes: Double,
     val segments: List<RouteSegment> = emptyList(),
+    /** Source notice that must stand next to any weather value shown from [segments]; `null` when none carries weather. */
+    val weatherAttribution: String? = null,
 ) {
     init {
         require(points.size >= 2) { "A route needs at least two points" }
@@ -39,6 +41,10 @@ data class Route(
     val startTemperatureC: Double? get() = segments.firstOrNull()?.temperatureC
 
     val destinationTemperatureC: Double? get() = segments.lastOrNull()?.temperatureC
+
+    /** [weatherAttribution] for a surface that shows [startTemperatureC] and [destinationTemperatureC]; `null` when it shows neither. */
+    val endTemperaturesAttribution: String?
+        get() = weatherAttribution?.takeIf { startTemperatureC != null || destinationTemperatureC != null }
 }
 
 /** A charge site beside a route. */

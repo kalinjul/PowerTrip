@@ -59,6 +59,11 @@ struct TripPlanView: View {
                     levelPercent: plan.arrivalSocPercent,
                     temperatureC: plan.route.destinationTemperatureC?.doubleValue
                 )
+                if let attribution = plan.route.endTemperaturesAttribution {
+                    Text(attribution)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)

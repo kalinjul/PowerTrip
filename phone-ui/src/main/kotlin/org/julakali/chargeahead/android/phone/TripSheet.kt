@@ -388,6 +388,16 @@ private fun StopCards(
                 )
             }
         }
+        plan.route.endTemperaturesAttribution?.let { attribution ->
+            item(key = "weather-attribution") {
+                Text(
+                    attribution,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = CARD_PADDING, vertical = 8.dp),
+                )
+            }
+        }
     }
 }
 

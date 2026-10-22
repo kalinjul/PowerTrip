@@ -369,7 +369,9 @@ kilowatts whatever the driver's figure. At 0 °C this comes to about +16 %
 at 120 km/h and +32 % at 50 km/h. The coefficients are generic; they
 are not yet checked against measured winter consumption. Past the end of the
 route, reach is priced at the destination's temperature. The trip list shows
-the first and last segment's temperature at start and destination.
+the first and last segment's temperature at start and destination, with the
+backend's `weatherAttribution` below them: the DWD's CC BY 4.0 terms want the
+source notice where its values are shown.
 
 ### 5.1a Charging time
 

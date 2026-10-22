@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -157,23 +160,37 @@ class TripSheetContentTest {
         compose.onNodeWithText(compose.string(Res.string.garage_percent, 20)).assertIsDisplayed()
     }
 
-    @Test
-    fun `start and destination show the forecast temperature`() {
-        val route = Fixtures.plan.route.copy(
+    private val dwd = "Datenbasis: Deutscher Wetterdienst, Einzelwerte interpoliert"
+
+    private val wintryPlan = Fixtures.plan.copy(
+        route = Fixtures.plan.route.copy(
             segments = listOf(
                 RouteSegment(0.0, 400.0, 230.0, 0.0, 0.0, temperatureC = -3.4),
                 RouteSegment(400.0, 390.0, 235.0, 0.0, 0.0, temperatureC = 7.6),
             ),
-        )
-        sheet(plan = Fixtures.plan.copy(route = route))
+            weatherAttribution = dwd,
+        ),
+    )
+
+    @Test
+    fun `start and destination show the forecast temperature`() {
+        sheet(plan = wintryPlan)
         compose.onNodeWithText(compose.string(Res.string.trip_temperature, -3)).assertIsDisplayed()
         compose.onNodeWithText(compose.string(Res.string.trip_temperature, 8)).assertIsDisplayed()
     }
 
     @Test
-    fun `no temperature without a forecast`() {
+    fun `the weather source stands below the trip when temperatures are shown`() {
+        sheet(plan = wintryPlan)
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText(dwd))
+        compose.onNodeWithText(dwd).assertIsDisplayed()
+    }
+
+    @Test
+    fun `no temperature and no weather source without a forecast`() {
         sheet()
         compose.onNodeWithText("°C", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Wetterdienst", substring = true).assertDoesNotExist()
     }
 
     @Test

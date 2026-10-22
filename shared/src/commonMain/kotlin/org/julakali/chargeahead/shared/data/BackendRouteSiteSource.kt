@@ -85,5 +85,6 @@ internal fun RouteDto.toDomain(): Route? {
                 temperatureC = it.temperatureC,
             )
         },
+        weatherAttribution = weatherAttribution,
     )
 }
