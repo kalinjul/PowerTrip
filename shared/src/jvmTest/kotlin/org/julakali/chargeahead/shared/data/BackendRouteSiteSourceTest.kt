@@ -142,7 +142,7 @@ class BackendRouteSiteSourceTest {
     }
 
     @Test
-    fun theTemperatureIsCarriedAcrossAndMayBeMissing() = runBlocking {
+    fun theWeatherAndItsAttributionAreCarriedAcrossAndMayBeMissing() = runBlocking {
         val source = sourceRespondingWith(
             response(
                 extra = """
@@ -150,7 +150,7 @@ class BackendRouteSiteSourceTest {
                       {"fromKm": 0.0, "distanceKm": 8.2, "durationMinutes": 12.0, "ascentM": 41.0, "descentM": 3.5, "temperatureC": -2.4},
                       {"fromKm": 8.2, "distanceKm": 86.0, "durationMinutes": 51.0, "ascentM": 120.0, "descentM": 210.0}
                     ],
-                    "weatherAttribution": "Deutscher Wetterdienst"
+                    "weatherAttribution": "Datenbasis: Deutscher Wetterdienst, Einzelwerte interpoliert"
                 """.trimIndent(),
             ),
         )
@@ -159,12 +159,14 @@ class BackendRouteSiteSourceTest {
 
         assertEquals(-2.4, route.startTemperatureC)
         assertNull(route.destinationTemperatureC)
+        assertEquals("Datenbasis: Deutscher Wetterdienst, Einzelwerte interpoliert", route.weatherAttribution)
     }
 
     @Test
     fun aRouteWithoutAProfileStillMaps() = runBlocking {
         val route = assertNotNull(sourceRespondingWith(response(extra = "")).query()).route
 
+        assertNull(route.weatherAttribution)
         assertTrue(route.segments.isEmpty())
         assertEquals(94.2, route.distanceKm)
     }

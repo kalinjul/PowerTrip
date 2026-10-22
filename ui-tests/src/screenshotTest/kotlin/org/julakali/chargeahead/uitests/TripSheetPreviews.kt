@@ -52,12 +52,15 @@ fun TripSheetList() = Sheet(TripListLayout.LIST)
 @Composable
 fun TripSheetListWithTemperatures() = Sheet(
     TripListLayout.LIST,
+    // No stops, so the weather source below the destination is in view.
     plan = SamplePlan.copy(
+        stops = emptyList(),
         route = SamplePlan.route.copy(
             segments = listOf(
                 RouteSegment(0.0, 388.0, 226.0, 0.0, 0.0, temperatureC = -3.4),
                 RouteSegment(388.0, 388.0, 226.0, 0.0, 0.0, temperatureC = 7.6),
             ),
+            weatherAttribution = "Datenbasis: Deutscher Wetterdienst, Einzelwerte interpoliert",
         ),
     ),
 )
