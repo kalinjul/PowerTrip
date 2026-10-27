@@ -39,14 +39,7 @@ fun AppSheet(
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
         containerColor = MaterialTheme.colorScheme.background,
-        dragHandle = {
-            Box(
-                Modifier
-                    .padding(vertical = 10.dp)
-                    .size(width = 38.dp, height = 4.dp)
-                    .background(MaterialTheme.colorScheme.outlineVariant, CircleShape),
-            )
-        },
+        dragHandle = { SheetHandle() },
         // Top inset only, and here rather than via Modifier.statusBarsPadding,
         // which breaks the sheet's offset math.
         contentWindowInsets = { WindowInsets.statusBars },
@@ -60,6 +53,16 @@ fun AppSheet(
                 .imePadding(),
         ) { content() }
     }
+}
+
+@Composable
+fun SheetHandle() {
+    Box(
+        Modifier
+            .padding(vertical = 10.dp)
+            .size(width = 38.dp, height = 4.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant, CircleShape),
+    )
 }
 
 /**

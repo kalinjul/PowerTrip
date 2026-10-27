@@ -261,6 +261,7 @@
     <string name="plan_result_distance">%1$s km</string>
     <string name="cn_navigate">Start navigation to %1$s</string>
     <string name="cn_more">More nearby</string>
+    <string name="cn_close">Close charge now</string>
 
     <!-- Phone: garage -->
     <string name="garage_title">Garage</string>
