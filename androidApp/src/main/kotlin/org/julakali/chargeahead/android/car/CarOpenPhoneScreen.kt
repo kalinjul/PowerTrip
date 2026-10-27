@@ -44,7 +44,7 @@ class CarOpenPhoneScreen(
                     .setStartHeaderAction(Action.BACK)
                     .build(),
             )
-            .setIcon(icon(R.drawable.ic_destination))
+            .setIcon(icon(R.drawable.ic_near_me))
             .addAction(
                 Action.Builder()
                     .setTitle(Texts.string(Res.string.car_route_next_stop_only))

@@ -77,7 +77,7 @@ struct TripPlanView: View {
                         waypoints: waypoints
                     ))
                 } label: {
-                    Label(localized("trip_send_maps"), systemImage: "map.fill")
+                    Label(localized("trip_send_maps"), systemImage: "location.fill")
                 }
             }
         }
@@ -232,7 +232,7 @@ struct StopDetailView: View {
                 Button {
                     openInMaps(MapsHandoff.shared.navigateUrl(target: stop.site.position))
                 } label: {
-                    Label(localized("phone_detail_navigate"), systemImage: "map.fill")
+                    Label(localized("phone_detail_navigate"), systemImage: "location.fill")
                 }
             }
         }
