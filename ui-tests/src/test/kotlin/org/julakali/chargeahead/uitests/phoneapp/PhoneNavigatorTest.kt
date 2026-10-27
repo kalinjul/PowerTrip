@@ -3,7 +3,6 @@ package org.julakali.chargeahead.uitests.phoneapp
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import org.julakali.chargeahead.android.phone.CarData
-import org.julakali.chargeahead.android.phone.ChargeNow
 import org.julakali.chargeahead.android.phone.Garage
 import org.julakali.chargeahead.android.phone.Home
 import org.julakali.chargeahead.android.phone.PhoneNavigator
@@ -59,9 +58,9 @@ class PhoneNavigatorTest {
 
     @Test
     fun `a second tap on the same target does not stack it twice`() {
-        navigator.open(ChargeNow)
-        navigator.open(ChargeNow)
+        navigator.open(Garage)
+        navigator.open(Garage)
 
-        assertEquals(listOf(Home, ChargeNow), backStack.toList())
+        assertEquals(listOf(Home, Garage), backStack.toList())
     }
 }

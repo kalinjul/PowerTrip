@@ -148,4 +148,16 @@ class ChargeNowRankerTest {
         assertTrue(result.relaxed.isEmpty())
         assertEquals("demo:next-door", result.candidates.first().site.id)
     }
+
+    /** The list numbers the "more" rows on from the top ones, and so do the map's markers. */
+    @Test
+    fun `ranks count on from the top candidates into more`() {
+        val result = rank((1..5).map { site("s$it", "Ionity", 300.0, it.toDouble()) })
+
+        assertEquals(1, result.rankOf("demo:s1"))
+        assertEquals(4, result.rankOf("demo:s4"))
+        assertEquals(null, result.rankOf("demo:elsewhere"))
+        assertEquals("demo:s4", result.atRank(4)?.site?.id)
+        assertEquals(null, result.atRank(6))
+    }
 }

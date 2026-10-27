@@ -4,7 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
-import org.julakali.chargeahead.android.phone.ChargeNow
+import org.julakali.chargeahead.android.phone.Garage
 import org.julakali.chargeahead.android.phone.Home
 import org.julakali.chargeahead.android.phone.PhoneNavigator
 import org.junit.Assert.assertEquals
@@ -29,7 +29,7 @@ class RootBackHandlerTest {
         }
         compose.waitForIdle()
 
-        compose.runOnIdle { navigator.open(ChargeNow) }
+        compose.runOnIdle { navigator.open(Garage) }
         compose.waitForIdle()
 
         assertEquals(1, parentCompositions)

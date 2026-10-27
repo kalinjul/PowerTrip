@@ -14,6 +14,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
+import org.julakali.chargeahead.android.phone.ChargeNowCallout
 import org.julakali.chargeahead.android.phone.CompassButton
 import org.julakali.chargeahead.android.phone.HintChip
 import org.julakali.chargeahead.android.phone.HomePill
@@ -99,6 +100,18 @@ fun StationCardChargeNow() {
     }
 }
 
+/** The selected "charge now" candidate on the map. */
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun ChargeNowCalloutSelected() {
+    PreviewScaffold {
+        Box(Modifier.padding(12.dp)) {
+            ChargeNowCallout(rank = 2, color = Color(0xFF1E3A5F), title = "EnBW", meta = "4,8 km · 300 kW")
+        }
+    }
+}
+
 /** Nothing committed yet: the pill is there, but dimmed and not clickable. */
 @PreviewTest
 @Preview(locale = "de", showBackground = true)
@@ -129,6 +142,11 @@ fun HomePillsChargeNowAndActiveRouteDark() = HomePillsChargeNowAndActiveRoute()
 @Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun StationCardChargeNowDark() = StationCardChargeNow()
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun ChargeNowCalloutSelectedDark() = ChargeNowCalloutSelected()
 
 @PreviewTest
 @Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)

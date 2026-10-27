@@ -15,6 +15,8 @@ import org.julakali.chargeahead.android.phone.theme.ChargeAheadTheme
 import org.julakali.chargeahead.shared.domain.distanceKmTo
 import org.julakali.chargeahead.uitests.Fixtures
 import androidx.compose.ui.test.isDisplayed
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelected
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -43,6 +45,7 @@ import org.julakali.chargeahead.shared.domain.MapsHandoff
 import org.julakali.chargeahead.shared.domain.ChargeSite
 import org.julakali.chargeahead.shared.resources.Res
 import org.julakali.chargeahead.shared.resources.active_route_end
+import org.julakali.chargeahead.shared.resources.cn_close
 import org.julakali.chargeahead.shared.resources.active_route_show_on_map
 import org.julakali.chargeahead.shared.resources.addcar_custom_named
 import org.julakali.chargeahead.shared.resources.drawer_car
@@ -50,6 +53,7 @@ import org.julakali.chargeahead.shared.resources.garage_add_title
 import org.julakali.chargeahead.shared.resources.garage_added
 import org.julakali.chargeahead.shared.resources.garage_empty_title
 import org.julakali.chargeahead.shared.resources.garage_search
+import org.julakali.chargeahead.shared.resources.garage_title
 import org.julakali.chargeahead.shared.resources.garage_vehicle_row
 import org.julakali.chargeahead.shared.resources.home_pill_active_route
 import org.julakali.chargeahead.shared.resources.home_pill_charge_now
@@ -525,6 +529,75 @@ class PhoneAppFlowTest {
         compose.onNodeWithText(chargeNowPill()).performClick()
 
         waitForText("Fastned")
+    }
+
+    private fun startWithTwoNearby() {
+        harness.start(
+            nearby = listOf(
+                Fixtures.site("n1", "Fastned", harness.hamburg.copy(lat = harness.hamburg.lat + 0.009), "Hamburg"),
+                Fixtures.site("n2", "Allego", harness.hamburg.copy(lat = harness.hamburg.lat + 0.018), "Hamburg"),
+            ),
+        )
+        compose.setThemedContent { PhoneApp(librariesRes = 0) }
+        compose.onNodeWithText(chargeNowPill()).performClick()
+        waitForText("Allego")
+    }
+
+    @Test
+    fun `the x closes jetzt laden`() {
+        startWithTwoNearby()
+
+        compose.onNodeWithContentDescription(compose.string(Res.string.cn_close)).performClick()
+
+        waitForTextGone("Allego")
+    }
+
+    /** The selected card is the one the map shows as its callout. */
+    @Test
+    fun `jetzt laden selects the nearest, and a card opened for details becomes the selection`() {
+        startWithTwoNearby()
+        compose.onNode(hasText("Fastned") and isSelected()).assertExists()
+
+        compose.onNodeWithText("Allego").performClick()
+        waitForText(compose.string(Res.string.phone_detail_navigate))
+        pressBack()
+        waitForTextGone(compose.string(Res.string.phone_detail_navigate))
+
+        compose.onNode(hasText("Allego") and isSelected()).assertExists()
+        compose.onNode(hasText("Fastned") and isSelected()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the search hides jetzt laden until it closes`() {
+        startWithTwoNearby()
+        compose.waitUntil(WAIT_MILLIS) { compose.onNodeWithText("Allego").isDisplayed() }
+
+        compose.onNodeWithText(searchHint()).performClick()
+        compose.waitUntil(WAIT_MILLIS) { !compose.onNodeWithText("Allego").isDisplayed() }
+
+        pressBack()
+        compose.waitUntil(WAIT_MILLIS) { compose.onNodeWithText("Allego").isDisplayed() }
+    }
+
+    @Test
+    fun `a page from the drawer closes jetzt laden`() {
+        startWithTwoNearby()
+
+        openDrawer()
+        compose.onNodeWithText(compose.string(Res.string.drawer_car)).performClick()
+        waitForText(compose.string(Res.string.garage_title))
+
+        waitForTextGone("Allego")
+    }
+
+    @Test
+    fun `planning a trip closes jetzt laden`() {
+        startWithTwoNearby()
+
+        searchAndPick()
+
+        waitForTrip()
+        waitForTextGone("Allego")
     }
 
     /** The search ViewModels outlive the activity, so a rotation keeps the typed text and the open search. */

@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,6 +41,9 @@ import org.julakali.chargeahead.shared.ui.PhoneAppViewModel
 import org.julakali.chargeahead.shared.ui.TripEvent
 import org.julakali.chargeahead.shared.ui.TripUiState
 import org.julakali.chargeahead.shared.ui.ActiveRouteViewModel
+import org.julakali.chargeahead.shared.ui.ChargeNowSheetUiState
+import org.julakali.chargeahead.shared.ui.ChargeNowViewModel
+import org.julakali.chargeahead.shared.domain.ChargeNowCandidate
 import org.julakali.chargeahead.shared.ui.TripViewModel
 import org.koin.androidx.compose.koinViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -73,12 +77,15 @@ fun PhoneApp(librariesRes: Int) {
     val tripViewModel: TripViewModel = koinViewModel()
     val searchViewModel: SearchViewModel = koinViewModel()
     val activeRouteViewModel: ActiveRouteViewModel = koinViewModel()
+    val chargeNowViewModel: ChargeNowViewModel = koinViewModel()
 
     val phoneAppUi by phoneAppViewModel.uiState.collectAsStateWithLifecycle()
     val drawerUi by drawerViewModel.uiState.collectAsStateWithLifecycle()
     val tripUi by tripViewModel.uiState.collectAsStateWithLifecycle()
     val searchUi by searchViewModel.uiState.collectAsStateWithLifecycle()
     val committedUi by activeRouteViewModel.uiState.collectAsStateWithLifecycle()
+    val chargeNowUi by chargeNowViewModel.uiState.collectAsStateWithLifecycle()
+    val chargeNowOpen = chargeNowUi as? ChargeNowSheetUiState.Open
     val sheet = tripUi as? TripUiState.Sheet
     val planned = sheet as? TripUiState.Planned
     // Kept past "Navigieren beenden", so the page keeps its name while it slides out.
@@ -114,6 +121,21 @@ fun PhoneApp(librariesRes: Int) {
     }
 
     LocationHandshakeEffects(phoneAppViewModel, onSettled = homeViewModel::onLocateRequested)
+
+    // A trip takes the map; its sheet replaces the candidates.
+    LaunchedEffect(sheet != null) {
+        if (sheet != null) chargeNowViewModel.onSheetClosed()
+    }
+    // A page covers the map: "charge now" doesn't wait underneath. Read in the effect,
+    // so a push doesn't recompose the app.
+    LaunchedEffect(navigator) {
+        snapshotFlow { navigator.atRoot }.collect { atRoot -> if (!atRoot) chargeNowViewModel.onSheetClosed() }
+    }
+
+    fun openCandidate(candidate: ChargeNowCandidate) {
+        chargeNowViewModel.onCandidateSelected(candidate.site.id)
+        homeViewModel.onSiteSelected(candidate.site)
+    }
 
     TripEventEffect(
         viewModel = tripViewModel,
@@ -151,54 +173,66 @@ fun PhoneApp(librariesRes: Int) {
             floatingControlsHeight = floatingControlsHeight,
             viewModel = tripViewModel,
         ) { peek ->
-            // Just the map, built once and kept. Pages and sheets are a
-            // separate layer above the drawer (below).
-            HomeRoute(
-                hasPermission = phoneAppUi.hasLocationPermission,
-                planningInProgress = tripUi is TripUiState.Planning,
-                trip = planned?.plan ?: activeRouteOnMap?.plan,
-                activeRouteOnMap = activeRouteOnMap != null,
-                destination = sheet?.destination ?: activeRouteOnMap?.plan?.destination,
-                // The fit runs the moment the trip appears; the sheet is still rising then.
-                mapBottomInset = when {
-                    sheet != null -> tripPeekHeight()
-                    activeRouteOnMap != null -> floatingControlsHeight
-                    else -> 0.dp
-                },
-                onRequestPermission = phoneAppViewModel::onLocationPermissionRequested,
-                onLocate = phoneAppViewModel::onLocateRequested,
-                onSettings = { scope.launch { drawerState.open() } },
-                onChargeNow = { navigator.open(ChargeNow) },
-                activeRouteEnabled = committedUi.trip != null,
-                onActiveRoute = { navigator.openFromRoot(ActiveRoute) },
-                onStopTapped = { index ->
-                    (planned?.plan ?: activeRouteOnMap?.plan)?.stops?.getOrNull(index - 1)?.let { homeViewModel.onSiteSelected(it.site) }
-                },
-                // A stop opened from the active route, on its page or the map, belongs to the committed plan.
-                tripLineFor = { selected ->
-                    val committed = activeRouteOnMap ?: committedUi.trip?.takeIf { navigator.backStack.lastOrNull() == ActiveRoute }
-                    if (committed != null) {
-                        committed.plan.stopLine(context, selected, committed.departureTime())
-                    } else {
-                        planned?.plan?.stopLine(context, selected, clock())
-                    }
-                },
-                // No vehicle? Planning reports it as an event.
-                onPick = tripViewModel::plan,
-                // Only takes the committed route off the map; the trip stays under way.
-                onClearTrip = if (activeRouteOnMap != null) activeRouteViewModel::onMapHidden else tripViewModel::clear,
-                // Navigating to one of the plan's stops is committing, as sending the plan is.
-                onOpenMaps = { stop, link ->
-                    val ofPlan = navigator.backStack.lastOrNull() != ActiveRoute &&
-                        planned?.plan?.stops?.any { it.site.id == stop.site.id } == true
-                    if (openInMaps(link) && ofPlan) tripViewModel.commit()
-                },
-                onFloatingControlsHeight = { floatingControlsHeight = it },
-                // No scaffold padding: the map draws under the status bar.
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-            )
+            ChargeNowSheetScaffold(
+                uiState = chargeNowUi,
+                onClose = chargeNowViewModel::onSheetClosed,
+                onNavigate = { candidate -> sendToMaps(MapsHandoff.navigateUrl(candidate.site.position)) },
+                onOpen = ::openCandidate,
+                suspended = searchUi.expanded,
+            ) {
+                // Just the map, built once and kept. Pages are a separate layer
+                // above the drawer (below).
+                HomeRoute(
+                    hasPermission = phoneAppUi.hasLocationPermission,
+                    planningInProgress = tripUi is TripUiState.Planning,
+                    trip = planned?.plan ?: activeRouteOnMap?.plan,
+                    activeRouteOnMap = activeRouteOnMap != null,
+                    destination = sheet?.destination ?: activeRouteOnMap?.plan?.destination,
+                    // The fit runs the moment the trip appears; the sheet is still rising then.
+                    mapBottomInset = when {
+                        chargeNowOpen != null -> chargeNowPeekHeight()
+                        sheet != null -> tripPeekHeight()
+                        activeRouteOnMap != null -> floatingControlsHeight
+                        else -> 0.dp
+                    },
+                    onRequestPermission = phoneAppViewModel::onLocationPermissionRequested,
+                    onLocate = phoneAppViewModel::onLocateRequested,
+                    onSettings = { scope.launch { drawerState.open() } },
+                    onChargeNow = chargeNowViewModel::onSheetOpened,
+                    activeRouteEnabled = committedUi.trip != null,
+                    onActiveRoute = { navigator.openFromRoot(ActiveRoute) },
+                    onStopTapped = { index ->
+                        (planned?.plan ?: activeRouteOnMap?.plan)?.stops?.getOrNull(index - 1)?.let { homeViewModel.onSiteSelected(it.site) }
+                    },
+                    // A stop opened from the active route, on its page or the map, belongs to the committed plan.
+                    tripLineFor = { selected ->
+                        val committed = activeRouteOnMap ?: committedUi.trip?.takeIf { navigator.backStack.lastOrNull() == ActiveRoute }
+                        if (committed != null) {
+                            committed.plan.stopLine(context, selected, committed.departureTime())
+                        } else {
+                            planned?.plan?.stopLine(context, selected, clock())
+                        }
+                    },
+                    // No vehicle? Planning reports it as an event.
+                    onPick = tripViewModel::plan,
+                    // Only takes the committed route off the map; the trip stays under way.
+                    onClearTrip = if (activeRouteOnMap != null) activeRouteViewModel::onMapHidden else tripViewModel::clear,
+                    // Navigating to one of the plan's stops is committing, as sending the plan is.
+                    onOpenMaps = { stop, link ->
+                        val ofPlan = navigator.backStack.lastOrNull() != ActiveRoute &&
+                            planned?.plan?.stops?.any { it.site.id == stop.site.id } == true
+                        if (openInMaps(link) && ofPlan) tripViewModel.commit()
+                    },
+                    onFloatingControlsHeight = { floatingControlsHeight = it },
+                    chargeNow = chargeNowOpen,
+                    onCandidateTapped = { candidate -> chargeNowViewModel.onCandidateSelected(candidate.site.id) },
+                    onCandidateOpened = ::openCandidate,
+                    // No scaffold padding: the map draws under the status bar.
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background),
+                )
+            }
         }
     }
 
@@ -207,9 +241,7 @@ fun PhoneApp(librariesRes: Int) {
         librariesRes = librariesRes,
         preferredNetworkCount = drawerUi.preferredNetworkCount,
         onCarAdded = { preset -> snackbar.show(scope, Texts.string(Res.string.garage_added, preset.name)) },
-        onNavigateTo = { position -> sendToMaps(MapsHandoff.navigateUrl(position)) },
         onOpenStop = { stop -> homeViewModel.onSiteSelected(stop.site) },
-        onOpenSite = homeViewModel::onSiteSelected,
         onSendToMaps = ::sendToMaps,
         onTripEnded = { snackbar.show(scope, Texts.string(Res.string.active_route_ended)) },
         activeRouteTitle = activeRouteTitle,
@@ -224,6 +256,7 @@ fun PhoneApp(librariesRes: Int) {
         when {
             drawerState.isOpen -> null
             searchUi.expanded -> searchViewModel::onClosed
+            chargeNowOpen != null -> chargeNowViewModel::onSheetClosed
             planned != null && sheetState.currentValue == SheetValue.Expanded -> ::collapseTripSheet
             sheet != null -> tripViewModel::clear
             activeRouteOnMap != null -> activeRouteViewModel::onMapHidden
