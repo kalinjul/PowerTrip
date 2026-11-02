@@ -9,10 +9,11 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.unit.dp
 import org.julakali.chargeahead.android.phone.ChargeNowSheetContent
-import org.julakali.chargeahead.android.phone.components.AppSheet
+import org.julakali.chargeahead.android.phone.ChargeNowSheetScaffold
 import org.julakali.chargeahead.shared.domain.ChargeNowCandidate
 import org.julakali.chargeahead.shared.domain.ChargeNowResult
 import org.julakali.chargeahead.shared.domain.LatLon
+import org.julakali.chargeahead.shared.ui.ChargeNowSheetUiState
 import org.julakali.chargeahead.shared.ui.ChargeNowUiState
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -46,15 +47,19 @@ class ChargeNowSheetLazinessTest {
     ).fetchSemanticsNodes().size
 
     @Test
-    fun `inside the modal sheet too`() {
+    fun `inside the sheet over the map too`() {
         compose.setThemedContent {
-            AppSheet(onDismissRequest = {}) {
-                ChargeNowSheetContent(uiState = ChargeNowUiState.Ready(result()), onNavigate = {}, onOpen = {})
-            }
+            ChargeNowSheetScaffold(
+                uiState = ChargeNowSheetUiState.Open(ChargeNowUiState.Ready(result())),
+                onClose = {},
+                onNavigate = {},
+                onOpen = {},
+                suspended = false,
+            ) {}
         }
         compose.waitForIdle()
         val composed = composedCards()
-        assertTrue("composed $composed cards in the modal sheet", composed < 30)
+        assertTrue("composed $composed cards in the sheet", composed < 30)
     }
 
     /** 305 "more" rows: a sheet half a screen tall must compose a screenful, not all of them. */
@@ -67,7 +72,13 @@ class ChargeNowSheetLazinessTest {
         )
         compose.setThemedContent {
             Box(Modifier.height(600.dp)) {
-                ChargeNowSheetContent(uiState = ChargeNowUiState.Ready(result), onNavigate = {}, onOpen = {})
+                ChargeNowSheetContent(
+                    uiState = ChargeNowUiState.Ready(result),
+                    selectedSiteId = null,
+                    onNavigate = {},
+                    onOpen = {},
+                    onClose = {},
+                )
             }
         }
         compose.waitForIdle()

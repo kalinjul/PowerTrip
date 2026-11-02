@@ -737,14 +737,15 @@ start the same graph later) and resolved with Koin's `koinViewModel()`.
 Navigation goes through `PhoneNavigator`
 (`phone-ui/.../PhoneNavigator.kt`), the single owner of a Navigation3 back
 stack; nothing else touches it. Its destinations
-(`phone-ui/.../Destinations.kt`) are full-screen pages and, marked as
-`PhoneSheet`, the sheets over the map — `SheetSceneStrategy` draws those as
-an `OverlayScene`, so there is one back stack and not a second state machine
-beside it. The `NavDisplay` carries
+(`phone-ui/.../Destinations.kt`) are the full-screen pages. The sheets that
+belong to the map — trip, "Jetzt laden" — are state of their ViewModels, not
+destinations: they sit in `BottomSheetScaffold`s around the map, so the map
+above them stays live, and back reaches them as the root screen's steps
+(`PhoneNavigator.ScreenStep`). The `NavDisplay` carries
 `rememberViewModelStoreNavEntryDecorator()` (lifecycle-viewmodel-navigation3):
 every destination gets its own ViewModelStore, cleared when it leaves the back
 stack. What sits outside `NavDisplay` — map, search bar, drawer, trip
-sheet — resolves against the activity, so `SearchViewModel`, `TripViewModel`
+and "Jetzt laden" sheets — resolves against the activity, so `SearchViewModel`, `TripViewModel`
 and friends are shared between `PhoneApp` and the composables that draw them.
 Leaf components stay out of it: `DrawerContent` emits a `DrawerTarget`, and
 `PhoneApp` decides which destination that is.

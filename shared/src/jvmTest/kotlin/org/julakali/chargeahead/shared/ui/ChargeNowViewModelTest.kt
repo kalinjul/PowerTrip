@@ -8,8 +8,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import org.julakali.chargeahead.shared.ChargeStopsFeature
 import org.julakali.chargeahead.shared.domain.BoundingBox
@@ -54,19 +52,21 @@ class ChargeNowViewModelTest {
         },
         parentScope = CoroutineScope(Dispatchers.Unconfined),
     ).apply { start() }
-    private val nearby = ChargeSite(
-        id = "near",
-        name = "near",
+    private fun site(id: String, northKm: Double) = ChargeSite(
+        id = id,
+        name = id,
         operator = "Ionity",
-        position = LatLon(here.lat + 0.01, here.lon),
+        position = LatLon(here.lat + northKm / 111.0, here.lon),
         connectors = listOf(Connector(ConnectorType.CCS2, 300.0, 4)),
     )
+    private val nearby = site("near", 1.0)
+    private val further = site("further", 3.0)
     private val store = MutableStateFlow<List<ChargeSite>>(emptyList())
     private val repository = object : SiteRepository {
         override suspend fun covers(area: SearchArea, networkKeys: Set<String>): Boolean = true
         override suspend fun storedSites(ids: Set<String>): Map<String, ChargeSite> = emptyMap()
         override suspend fun load(area: SearchArea, networkKeys: Set<String>) {
-            store.update { listOf(nearby) }
+            store.update { listOf(nearby, further) }
         }
 
         override fun storedSitesIn(box: BoundingBox, filter: MapFilter): Flow<List<ChargeSite>> = store
@@ -92,10 +92,14 @@ class ChargeNowViewModelTest {
         ),
     )
 
-    /** The modal sheet takes its height from the first frame: a tall skeleton, never a one-liner. */
+    private suspend fun ChargeNowViewModel.awaitOpen(condition: (ChargeNowSheetUiState.Open) -> Boolean) =
+        withTimeout(5_000) { uiState.first { it is ChargeNowSheetUiState.Open && condition(it) } } as ChargeNowSheetUiState.Open
+
+    private val ChargeNowSheetUiState.Open.result get() = (content as? ChargeNowUiState.Ready)?.result
+
     @Test
-    fun `the sheet starts on the skeleton, not on no position`() {
-        assertEquals(ChargeNowUiState.Loading, viewModel().uiState.value)
+    fun `the sheet starts closed`() {
+        assertEquals(ChargeNowSheetUiState.Closed, viewModel().uiState.value)
     }
 
     @Test
@@ -105,19 +109,44 @@ class ChargeNowViewModelTest {
 
         viewModel.onSheetOpened()
 
-        val ready = withTimeout(5_000) { viewModel.uiState.first { it is ChargeNowUiState.Ready && !it.result.isEmpty } }
-        assertEquals(listOf("near"), (ready as ChargeNowUiState.Ready).result.candidates.map { it.site.id })
+        val open = viewModel.awaitOpen { it.result?.isEmpty == false }
+        assertEquals(listOf("near", "further"), open.result?.candidates?.map { it.site.id })
     }
 
-    /** Until the sheet reports where it is, nothing may replace the skeleton — not even "no position". */
     @Test
-    fun `the state stays on the skeleton until the sheet reports in`() = runBlocking<Unit> {
+    fun `the nearest candidate is selected until the driver picks another`() = runBlocking<Unit> {
+        fixes.emit(Fix(here, null, null, 0L))
         val viewModel = viewModel()
-        val states = mutableListOf<ChargeNowUiState>()
-        val job = launch { viewModel.uiState.collect { states += it } }
-        delay(200)
-        job.cancel()
+        viewModel.onSheetOpened()
+        assertEquals("near", viewModel.awaitOpen { it.selected != null }.selected?.site?.id)
 
-        assertEquals(listOf<ChargeNowUiState>(ChargeNowUiState.Loading), states)
+        viewModel.onCandidateSelected("further")
+
+        assertEquals(2, viewModel.awaitOpen { it.selected?.site?.id == "further" }.selectedRank)
+    }
+
+    @Test
+    fun `closing the sheet closes it, and reopening starts on the nearest again`() = runBlocking<Unit> {
+        fixes.emit(Fix(here, null, null, 0L))
+        val viewModel = viewModel()
+        viewModel.onSheetOpened()
+        viewModel.onCandidateSelected("further")
+
+        viewModel.onSheetClosed()
+        withTimeout(5_000) { viewModel.uiState.first { it == ChargeNowSheetUiState.Closed } }
+
+        viewModel.onSheetOpened()
+        viewModel.awaitOpen { it.selected?.site?.id == "near" }
+    }
+
+    @Test
+    fun `without a fix the open sheet has no position and nothing selected`() = runBlocking<Unit> {
+        val viewModel = viewModel()
+
+        viewModel.onSheetOpened()
+
+        val open = viewModel.awaitOpen { true }
+        assertEquals(ChargeNowUiState.NoPosition, open.content)
+        assertEquals(null, open.selected)
     }
 }

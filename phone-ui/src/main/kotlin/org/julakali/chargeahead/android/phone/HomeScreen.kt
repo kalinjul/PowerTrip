@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.platform.testTag
 import org.julakali.chargeahead.android.phone.theme.ChargeAheadColors
 import org.julakali.chargeahead.shared.domain.ChargeMode
+import org.julakali.chargeahead.shared.domain.ChargeNowCandidate
+import org.julakali.chargeahead.shared.ui.ChargeNowSheetUiState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -136,6 +138,10 @@ fun HomeRoute(
     onOpenMaps: (ChargeStop, String) -> Unit,
     /** How far the floating buttons reach up from the bottom edge, 0 while none are shown. */
     onFloatingControlsHeight: (Dp) -> Unit,
+    /** The open "charge now" sheet, whose candidates the map shows. */
+    chargeNow: ChargeNowSheetUiState.Open?,
+    onCandidateTapped: (ChargeNowCandidate) -> Unit,
+    onCandidateOpened: (ChargeNowCandidate) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = koinViewModel(),
     searchViewModel: SearchViewModel = koinViewModel(),
@@ -175,6 +181,9 @@ fun HomeRoute(
         },
         onClearTrip = onClearTrip,
         onFloatingControlsHeight = onFloatingControlsHeight,
+        chargeNow = chargeNow,
+        onCandidateTapped = onCandidateTapped,
+        onCandidateOpened = onCandidateOpened,
         modifier = modifier,
     )
 
@@ -217,6 +226,9 @@ fun HomeScreen(
     onFloatingControlsHeight: (Dp) -> Unit = {},
     /** [trip] is the committed one: no trip sheet, and the pills stay. */
     activeRouteOnMap: Boolean = false,
+    chargeNow: ChargeNowSheetUiState.Open? = null,
+    onCandidateTapped: (ChargeNowCandidate) -> Unit = {},
+    onCandidateOpened: (ChargeNowCandidate) -> Unit = {},
 ) {
     val homeMode = when {
         search.expanded -> HomeMode.SEARCHING
@@ -244,6 +256,9 @@ fun HomeScreen(
                 onViewportChanged = onViewportChanged,
                 onChargerTapped = onChargerTapped,
                 onStopTapped = onStopTapped,
+                chargeNow = chargeNow,
+                onCandidateTapped = onCandidateTapped,
+                onCandidateOpened = onCandidateOpened,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {

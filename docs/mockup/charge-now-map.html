@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Charge now on the map</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650&family=Roboto:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0">
+<style>
+  /* Three ways to show the "Charge now" candidates on the home map, as phone mockups in the app's theme tokens. */
+  :root {
+    --bg: #F5F7FA; --surface: #FFFFFF; --surface-var: #F1F3F4; --on: #202124; --on-var: #5F6368; --faint: #80868B;
+    --outline: #DADCE0; --primary: #7F77DD; --on-primary: #FFFFFF; --primary-c: #ECEAFB; --on-primary-c: #26215C;
+    --green: #188038; --amber: #F9AB00; --red: #D93025; --green-t: #E6F4EA; --amber-t: #FEF7E0; --amber-s: #B06000;
+    --map: #E8ECE6; --road: #FFFFFF; --road-b: #F6D58E; --water: #B9DDF0; --park: #CFE6CC; --shadow: rgba(32, 33, 36, .16);
+    --display: "Bricolage Grotesque", Roboto, system-ui, sans-serif;
+    --body: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121212; --surface: #1E1F22; --surface-var: #2A2B2F; --on: #E8EAED; --on-var: #9AA0A6; --faint: #80868B;
+      --outline: #3C4043; --primary: #AFA9EC; --on-primary: #26215C; --primary-c: #3B3684; --on-primary-c: #E5E2FA;
+      --green: #81C995; --amber: #FDD663; --red: #F28B82; --green-t: #1E3B2A; --amber-t: #3D2F0A; --amber-s: #FDD663;
+      --map: #1F2226; --road: #33373D; --road-b: #4A4232; --water: #17323B; --park: #1F3A2C; --shadow: rgba(0, 0, 0, .5); color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121212; --surface: #1E1F22; --surface-var: #2A2B2F; --on: #E8EAED; --on-var: #9AA0A6; --faint: #80868B;
+    --outline: #3C4043; --primary: #AFA9EC; --on-primary: #26215C; --primary-c: #3B3684; --on-primary-c: #E5E2FA;
+    --green: #81C995; --amber: #FDD663; --red: #F28B82; --green-t: #1E3B2A; --amber-t: #3D2F0A; --amber-s: #FDD663;
+    --map: #1F2226; --road: #33373D; --road-b: #4A4232; --water: #17323B; --park: #1F3A2C; --shadow: rgba(0, 0, 0, .5); color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; padding-block: 32px 56px; padding-inline: 16px; background: var(--bg); color: var(--on); font-family: var(--body); font-size: 14px; line-height: 1.45; }
+  .page { max-width: 1340px; margin: 0 auto; display: flex; flex-direction: column; gap: 32px; }
+  h1, h2 { font-family: var(--display); margin: 0; text-wrap: balance; }
+  h1 { font-size: 30px; font-weight: 650; letter-spacing: -.01em; }
+  h2 { font-size: 17px; font-weight: 650; }
+  p { margin: 0; }
+  .lede { color: var(--on-var); max-width: 70ch; margin-top: 6px; font-size: 15px; }
+  .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--primary); }
+  ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+  li { color: var(--on-var); }
+  li b { color: var(--on); font-weight: 500; }
+
+  .variants { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 28px; align-items: start; }
+  .variant { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .variant h2 .tag { display: inline-block; font-family: var(--body); font-size: 12px; font-weight: 700; color: var(--on-primary); background: var(--primary); border-radius: 6px; padding: 1px 7px; margin-right: 6px; vertical-align: 2px; }
+  .variant > p { color: var(--on-var); font-size: 13px; }
+  .common { display: flex; flex-direction: column; gap: 10px; max-width: 78ch; }
+
+  /* ---------- phone ---------- */
+  .phone { position: relative; width: 100%; max-width: 320px; height: 620px; border-radius: 26px; overflow: hidden; background: var(--map); box-shadow: 0 8px 28px var(--shadow); font-variant-numeric: tabular-nums; font-size: 13px; line-height: 1.35; }
+  .map { position: absolute; inset: 0 0 auto 0; height: 340px; }
+  .map svg.base { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .search { position: absolute; top: 30px; left: 12px; right: 12px; background: var(--surface); border-radius: 24px; padding: 9px 14px; box-shadow: 0 2px 8px var(--shadow); display: flex; align-items: center; gap: 10px; color: var(--on-var); z-index: 3; }
+  .ms { font-family: "Material Symbols Outlined"; font-size: 20px; line-height: 1; flex: none; user-select: none; }
+  .me { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #1A73E8; border: 3px solid #fff; box-shadow: 0 0 0 9px rgba(26, 115, 232, .18); transform: translate(-50%, -50%); z-index: 2; }
+  .m { position: absolute; transform: translate(-50%, -50%); z-index: 1; }
+  .m.top { z-index: 2; }
+
+  /* today's map pill: bolts + short name, tinted right half with the free count */
+  .pill { display: inline-flex; align-items: stretch; background: var(--surface); border: 1px solid var(--outline); border-radius: 999px; overflow: hidden; font-size: 12px; font-weight: 500; white-space: nowrap; box-shadow: 0 1px 2px var(--shadow); color: var(--on); }
+  .pill .l { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; }
+  .pill .r { display: inline-flex; align-items: center; padding: 2px 7px 2px 5px; font-weight: 700; font-size: 11px; }
+  .pill .r.good { background: var(--green-t); color: var(--green); } .pill .r.low { background: var(--amber-t); color: var(--amber-s); }
+  .bolt { width: 12px; height: 12px; fill: var(--green); }
+  .faded { opacity: .35; }
+  .dot { display: block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; background: var(--green); box-shadow: 0 0 0 1px rgba(0,0,0,.18); }
+
+  /* rank disc: same colour as the card's rank badge */
+  .disc { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; box-shadow: 0 2px 6px var(--shadow); font-variant-numeric: proportional-nums; }
+  .rank { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; color: #fff; font-size: 10.5px; font-weight: 700; margin-left: -3px; }
+  .pill.ranked { border-width: 2px; border-color: var(--rc); box-shadow: 0 2px 8px var(--shadow); font-size: 12.5px; }
+  .callout { display: flex; flex-direction: column; align-items: center; }
+  .callout .box { background: var(--surface); border: 2px solid var(--rc); border-radius: 14px; padding: 6px 10px 6px 7px; display: flex; gap: 8px; align-items: center; box-shadow: 0 3px 10px var(--shadow); white-space: nowrap; }
+  .callout .box b { display: block; font-size: 13px; font-weight: 500; }
+  .callout .box small { color: var(--on-var); font-size: 11.5px; }
+  .callout .tail { width: 10px; height: 10px; background: var(--surface); border-right: 2px solid var(--rc); border-bottom: 2px solid var(--rc); transform: rotate(45deg); margin-top: -6px; }
+
+  /* the sheet, anchored at half height */
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; top: 318px; background: var(--bg); border-radius: 22px 22px 0 0; box-shadow: 0 -2px 12px var(--shadow); padding: 0 14px; display: flex; flex-direction: column; gap: 7px; z-index: 4; overflow: hidden; }
+  .handle { width: 32px; height: 4px; border-radius: 2px; background: var(--outline); margin: 9px auto 4px; flex: none; }
+  .sheet h3 { margin: 0; font-size: 16px; font-weight: 500; }
+  .sub { color: var(--on-var); font-size: 11.5px; }
+  .card { background: var(--surface); border-radius: 14px; padding: 9px 11px; display: flex; gap: 10px; align-items: center; box-shadow: 0 1px 2px var(--shadow); border: 2px solid transparent; }
+  .card.sel { border-color: var(--rc); }
+  .card .badge { width: 24px; height: 24px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700; flex: none; }
+  .card .t { flex: 1; min-width: 0; }
+  .card b { display: block; font-weight: 500; font-size: 13.5px; }
+  .card small { display: block; color: var(--on-var); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .go { width: 34px; height: 34px; border-radius: 50%; background: var(--primary-c); color: var(--on-primary-c); display: grid; place-items: center; flex: none; }
+  .go .ms { font-size: 18px; }
+  .scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .32); z-index: 3; }
+  .label { position: absolute; left: 10px; bottom: 300px; z-index: 5; background: var(--surface); border-radius: 8px; padding: 3px 8px; font-size: 11px; color: var(--on-var); box-shadow: 0 1px 3px var(--shadow); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <p class="eyebrow">Phone UI · issue #192</p>
+    <h1>Charge now on the map</h1>
+    <p class="lede">While the "Jetzt laden" sheet is open, the map behind it shows the same candidates as the list. Today the modal sheet dims the map and the map keeps showing every charger in the viewport, so the driver can't tell which three are meant. Three ways to fix that, all with the same sheet.</p>
+  </header>
+
+  <section class="variants">
+    <div class="variant">
+      <h2><span class="tag">Today</span>Modal sheet, map unchanged</h2>
+      <p>For reference: the scrim dims the map, the candidates are among a dozen other pills.</p>
+      <div class="phone" id="today"></div>
+    </div>
+    <div class="variant">
+      <h2><span class="tag">A</span>Numbered discs</h2>
+      <p>The top three become numbered discs in the colour of the card's rank badge. The other chargers stay, faded. Cheapest: one new marker, the pills stay as they are.</p>
+      <div class="phone" id="a"></div>
+    </div>
+    <div class="variant">
+      <h2><span class="tag">B</span>Ranked pills, rest hidden</h2>
+      <p>Candidates keep their normal pill (speed, network, free count) with the rank in front and a ring in the badge colour. Every other charger is hidden; "Mehr in der Nähe" shows as small dots.</p>
+      <div class="phone" id="b"></div>
+    </div>
+    <div class="variant">
+      <h2><span class="tag">C</span>Linked selection</h2>
+      <p>Like A, but list and map share a selection: the selected candidate grows into a callout with name and distance, its card gets a ring. Tapping a disc selects its card; tapping a card selects its disc.</p>
+      <div class="phone" id="c"></div>
+    </div>
+  </section>
+
+  <section class="common">
+    <h2>The same in every variant</h2>
+    <ul>
+      <li><b>No scrim.</b> The sheet stays modal for back and swipe-down, but the map above it is not dimmed, otherwise there is nothing to see.</li>
+      <li><b>The camera fits the driver's position and the top three</b> into the part of the map above the sheet, once, when the results arrive. Afterwards the driver may pan.</li>
+      <li><b>Closing the sheet</b> brings back the normal map: all chargers, and the camera where the driver had it before.</li>
+      <li><b>Fully expanded sheet</b> covers the map; nothing to show then, the markers simply stay.</li>
+      <li><b>Loading, empty, no position:</b> the map shows no candidates and keeps its normal markers.</li>
+    </ul>
+    <h2>Open questions</h2>
+    <ul>
+      <li><b>Hide or fade the other chargers?</b> Hiding (B) tells the clearest story; fading (A, C) keeps the context, e.g. a full site next to a candidate.</li>
+      <li><b>Show "Mehr in der Nähe" on the map?</b> Only B does, as dots. Up to a dozen more markers dilute the top three.</li>
+      <li><b>Restore the old camera on close,</b> or stay where the candidates are?</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+  const bolt = `<svg class="bolt" viewBox="0 0 24 24"><path d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66C12.97 17.55 11 21 11 21z"/></svg>`;
+  const cands = [
+    { n: 1, op: 'IONITY',     name: 'IONITY Frankfurter Kreuz', addr: 'Am Flughafen 3, 60549 Frankfurt', km: '3,2', kw: 350, free: '4/6', tone: 'good', c: '#00C389', x: 88,  y: 140 },
+    { n: 2, op: 'EnBW',       name: 'EnBW',                    addr: 'Kaiserleistraße 8, 63067 Offenbach', km: '4,8', kw: 300, free: '2/8', tone: 'low',  c: '#1E3A5F', x: 205, y: 200 },
+    { n: 3, op: 'Aral pulse', name: 'Aral pulse',              addr: 'Frankfurter Str. 120, 65760 Eschborn', km: '6,1', kw: 300, free: '3/4', tone: 'good', c: '#0060AE', x: 196, y: 96 },
+  ];
+  const others = [
+    { op: 'Tesla', free: '9/12', tone: 'good', x: 140, y: 230 }, { op: 'Shell', free: '1/2', tone: 'low', x: 62, y: 206 },
+    { op: 'EWE Go', free: '2/2', tone: 'good', x: 255, y: 128 }, { op: 'Allego', free: '0/2', tone: 'low', x: 150, y: 168 },
+    { op: 'Mainova', free: '1/4', tone: 'low', x: 228, y: 272 }, { op: 'E.ON', free: '2/4', tone: 'good', x: 52, y: 276 },
+  ];
+  const more = [ { x: 140, y: 230 }, { x: 255, y: 128 }, { x: 52, y: 276 }, { x: 228, y: 272 } ];
+  const me = { x: 160, y: 262 };
+
+  const base = `<svg class="base" viewBox="0 0 320 340" preserveAspectRatio="none" aria-hidden="true">
+    <rect width="320" height="340" fill="var(--map)"/>
+    <path d="M-10 60 C 80 70, 120 40, 330 30 L330 0 L-10 0 Z" fill="var(--water)"/>
+    <ellipse cx="270" cy="230" rx="60" ry="40" fill="var(--park)"/><ellipse cx="40" cy="120" rx="44" ry="30" fill="var(--park)"/>
+    <path d="M-10 250 C 100 230, 200 180, 330 160" stroke="var(--road-b)" stroke-width="9" fill="none"/>
+    <path d="M120 340 C 130 250, 170 150, 210 -10" stroke="var(--road-b)" stroke-width="9" fill="none"/>
+    <path d="M-10 170 L330 220 M40 340 L90 -10 M260 340 L300 -10 M-10 310 L330 300" stroke="var(--road)" stroke-width="5" fill="none"/>
+  </svg>`;
+  const pill = (o, cls = '') => `<span class="pill ${cls}"><span class="l">${bolt}${o.op}</span><span class="r ${o.tone}">${o.free}</span></span>`;
+  const at = (o, html, cls = '') => `<div class="m ${cls}" style="left:${o.x}px;top:${o.y}px">${html}</div>`;
+  const card = (k, sel) => `<div class="card ${sel ? 'sel' : ''}" style="--rc:${k.c}"><span class="badge" style="background:${k.c}">${k.n}</span>
+    <div class="t"><b>${k.op}</b><small>${k.addr}</small><small>${k.km} km · ${k.kw} kW</small></div><span class="go"><span class="ms">near_me</span></span></div>`;
+  const sheet = sel => `<div class="sheet"><div class="handle"></div><h3>Jetzt laden</h3><p class="sub">Beste Ladesäulen nach Entfernung und Filterkriterien</p>
+    ${cands.map(k => card(k, k.n === sel)).join('')}</div>`;
+  const shell = (markers, opts = {}) => `<div class="map">${base}<div class="search"><span class="ms">menu</span>Ziel suchen</div>
+    ${markers}<div class="me" style="left:${me.x}px;top:${me.y}px"></div></div>${opts.scrim ? '<div class="scrim"></div>' : ''}${sheet(opts.sel)}`;
+
+  const everything = [...others, ...cands];
+  document.getElementById('today').innerHTML = shell(everything.map(o => at(o, pill(o))).join(''), { scrim: true });
+
+  const disc = k => `<span class="disc" style="background:${k.c}">${k.n}</span>`;
+  document.getElementById('a').innerHTML = shell(
+    others.map(o => at(o, pill(o), 'faded')).join('') + cands.map(k => at(k, disc(k), 'top')).join(''));
+
+  const ranked = k => `<span class="pill ranked" style="--rc:${k.c}"><span class="l"><span class="rank" style="background:${k.c}">${k.n}</span>${bolt}${k.op}</span><span class="r ${k.tone}">${k.free}</span></span>`;
+  document.getElementById('b').innerHTML = shell(
+    more.map(o => at(o, '<span class="dot"></span>')).join('') + cands.map(k => at(k, ranked(k), 'top')).join(''));
+
+  const sel = cands[1];
+  const callout = k => `<div class="callout" style="--rc:${k.c};transform:translateY(-24px)"><div class="box">${disc(k)}<div><b>${k.op}</b><small>${k.km} km · ${k.kw} kW · ${k.free} frei</small></div></div><div class="tail"></div></div>`;
+  document.getElementById('c').innerHTML = shell(
+    others.map(o => at(o, pill(o), 'faded')).join('') +
+    cands.filter(k => k !== sel).map(k => at(k, disc(k), 'top')).join('') + at(sel, callout(sel), 'top'),
+    { sel: sel.n });
+</script>
+</body>
+</html>

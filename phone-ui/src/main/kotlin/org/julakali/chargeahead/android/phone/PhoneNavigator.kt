@@ -13,16 +13,16 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 
 /**
- * The one owner of the back stack. Pages and sheets are both destinations on
- * it, so "where is the app" has a single answer, and [back] is the only way
- * back — whether that undoes a step on the root screen or pops a destination.
+ * The one owner of the back stack, so "where is the app" has a single answer,
+ * and [back] is the only way back — whether that undoes a step on the root
+ * screen or pops a destination.
  */
 @Stable
 class PhoneNavigator(val backStack: NavBackStack<NavKey>) {
 
     private var screenStep: (() -> Unit)? by mutableStateOf(null)
 
-    /** Nothing but the map: no page, no sheet. */
+    /** Nothing but the map: no page. */
     val atRoot: Boolean get() = backStack.size == 1
 
     /**

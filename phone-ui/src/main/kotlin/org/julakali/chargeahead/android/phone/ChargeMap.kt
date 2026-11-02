@@ -28,7 +28,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -49,7 +51,9 @@ import org.julakali.chargeahead.android.phone.BuildConfig
 import org.julakali.chargeahead.android.phone.R
 import org.julakali.chargeahead.shared.domain.BoundingBox
 import org.julakali.chargeahead.shared.domain.LatLon
+import org.julakali.chargeahead.shared.domain.ChargeNowCandidate
 import org.julakali.chargeahead.shared.domain.MapCharger
+import org.julakali.chargeahead.shared.ui.ChargeNowSheetUiState
 import org.julakali.chargeahead.shared.resources.Res
 import org.julakali.chargeahead.shared.resources.map_missing_key
 
@@ -107,6 +111,12 @@ fun HomeGoogleMap(
     /** A numbered route marker, by its 1-based index. */
     onStopTapped: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** The open "charge now" sheet: once it has candidates, they replace the other chargers. */
+    chargeNow: ChargeNowSheetUiState.Open? = null,
+    /** A candidate's disc: selects it. */
+    onCandidateTapped: (ChargeNowCandidate) -> Unit = {},
+    /** The selected candidate's callout: opens its details. */
+    onCandidateOpened: (ChargeNowCandidate) -> Unit = {},
 ) {
     // No projection to read a viewport from until the map itself is up, so the
     // first run waits for it — otherwise nothing loads until the driver pans.
@@ -150,6 +160,20 @@ fun HomeGoogleMap(
         cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(bounds, BOUNDS_PADDING_PX))
     }
 
+    var mapSize by remember { mutableStateOf(IntSize.Zero) }
+    ChargeNowCamera(
+        chargeNow = chargeNow,
+        position = position,
+        route = route,
+        mapLoaded = mapLoaded,
+        camera = cameraPositionState,
+        mapSize = { mapSize },
+        coveredTop = TOP_CONTROLS_HEIGHT,
+        coveredBottom = bottomInset,
+    )
+    // Until there are candidates — loading, no position, nothing nearby — the map stays as it was.
+    val showsCandidates = chargeNow?.selected != null
+
     val pillIcons = rememberPillIcons()
     // Only flips at the threshold, so panning doesn't recompose every marker.
     val compactMarkers by remember(cameraPositionState) {
@@ -187,20 +211,24 @@ fun HomeGoogleMap(
         contentPadding = PaddingValues(top = TOP_CONTROLS_HEIGHT, bottom = bottomInset),
         // The SDK's own buttons would sit inside the status bar; ours replace them.
         uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false, compassEnabled = false),
-        modifier = modifier,
+        modifier = modifier.onSizeChanged { mapSize = it },
     ) {
-        // Keyed by site: the list is re-sorted around the centre on every pan.
-        chargers.forEach { charger ->
-            key(charger.site.id) {
-                val bounds = fadeBounds
-                ChargerMarker(
-                    charger = charger,
-                    icons = pillIcons,
-                    compact = shownCompact,
-                    // Reading the animation subscribes to it; off-screen markers don't.
-                    alpha = if (bounds != null && bounds.contains(charger.site.position.toLatLng())) tierAlpha.value else 1f,
-                    onClick = onChargerTapped,
-                )
+        if (chargeNow != null && showsCandidates) {
+            ChargeNowMarkers(chargeNow, onCandidateTapped, onCandidateOpened)
+        } else {
+            // Keyed by site: the list is re-sorted around the centre on every pan.
+            chargers.forEach { charger ->
+                key(charger.site.id) {
+                    val bounds = fadeBounds
+                    ChargerMarker(
+                        charger = charger,
+                        icons = pillIcons,
+                        compact = shownCompact,
+                        // Reading the animation subscribes to it; off-screen markers don't.
+                        alpha = if (bounds != null && bounds.contains(charger.site.position.toLatLng())) tierAlpha.value else 1f,
+                        onClick = onChargerTapped,
+                    )
+                }
             }
         }
         if (route != null) {
@@ -226,9 +254,9 @@ fun HomeGoogleMap(
     }
 }
 
-/** Circular disc with a white ring — the planned-stop badges on the trip map. */
+/** Circular disc with a white ring — the planned stops on the trip map and the "charge now" candidates. */
 @Composable
-private fun ChargeBadge(color: Color, content: @Composable () -> Unit) {
+fun ChargeBadge(color: Color, content: @Composable () -> Unit) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier

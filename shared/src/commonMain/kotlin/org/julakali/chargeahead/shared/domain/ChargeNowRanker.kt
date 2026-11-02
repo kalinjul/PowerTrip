@@ -16,6 +16,17 @@ data class ChargeNowResult(
     val more: List<ChargeNowCandidate> = emptyList(),
 ) {
     val isEmpty: Boolean get() = candidates.isEmpty() && more.isEmpty()
+
+    /** 1-based place in the list, [more] counted on from the top ones; `null` if absent. */
+    fun rankOf(siteId: String): Int? {
+        val top = candidates.indexOfFirst { it.site.id == siteId }
+        if (top >= 0) return top + 1
+        val tail = more.indexOfFirst { it.site.id == siteId }
+        return if (tail >= 0) candidates.size + tail + 1 else null
+    }
+
+    /** The candidate at a 1-based [rank], as counted by [rankOf]. */
+    fun atRank(rank: Int): ChargeNowCandidate? = candidates.getOrNull(rank - 1) ?: more.getOrNull(rank - 1 - candidates.size)
 }
 
 /**

@@ -6,6 +6,8 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 
 /**
  * The one card: elevated, no border, the route window's look everywhere.
@@ -25,9 +27,10 @@ fun AppCard(
         containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
     )
+    val announced = if (selected) modifier.semantics { this.selected = true } else modifier
     if (onClick != null) {
-        ElevatedCard(onClick = onClick, shape = shape, colors = colors, modifier = modifier, content = content)
+        ElevatedCard(onClick = onClick, shape = shape, colors = colors, modifier = announced, content = content)
     } else {
-        ElevatedCard(shape = shape, colors = colors, modifier = modifier, content = content)
+        ElevatedCard(shape = shape, colors = colors, modifier = announced, content = content)
     }
 }

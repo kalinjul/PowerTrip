@@ -256,15 +256,20 @@ struct ChargeNowView: View {
     var body: some View {
         let chargeNow = owner.viewModels.chargeNow()
         NavigationStack {
-            Observing(chargeNow.uiState) { state in
+            Observing(chargeNow.uiState) { sheet in
                 List {
-                    switch onEnum(of: state) {
-                    case .noPosition:
-                        Text(localized("home_no_position"))
-                    case .loading:
-                        ProgressView(localized("cn_loading"))
-                    case .ready(let ready):
-                        ChargeNowRows(result: ready.result)
+                    switch onEnum(of: sheet) {
+                    case .closed:
+                        EmptyView()
+                    case .open(let open):
+                        switch onEnum(of: open.content) {
+                        case .noPosition:
+                            Text(localized("home_no_position"))
+                        case .loading:
+                            ProgressView(localized("cn_loading"))
+                        case .ready(let ready):
+                            ChargeNowRows(result: ready.result)
+                        }
                     }
                 }
             }
@@ -272,6 +277,9 @@ struct ChargeNowView: View {
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 chargeNow.onSheetOpened()
+            }
+            .onDisappear {
+                chargeNow.onSheetClosed()
             }
         }
     }

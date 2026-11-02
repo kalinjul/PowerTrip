@@ -16,7 +16,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import org.jetbrains.compose.resources.stringResource
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
@@ -25,8 +24,6 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import org.julakali.chargeahead.android.phone.components.AppTopBar
 import org.julakali.chargeahead.android.phone.theme.ChargeAheadMotion
-import org.julakali.chargeahead.shared.domain.LatLon
-import org.julakali.chargeahead.shared.domain.ChargeSite
 import org.julakali.chargeahead.shared.domain.PlannedStop
 import org.julakali.chargeahead.shared.domain.VehiclePreset
 import org.julakali.chargeahead.shared.resources.Res
@@ -41,8 +38,8 @@ import org.julakali.chargeahead.shared.resources.phone_networks_title
 import org.julakali.chargeahead.shared.resources.vehicle_title
 
 /**
- * Everything the navigator can open: full-screen pages, and the sheets that
- * float over the map. The empty [Home] slot lets the map and drawer show through.
+ * Everything the navigator can open: full-screen pages. The empty [Home] slot
+ * lets the map and drawer show through.
  */
 @Composable
 fun PhoneNavDisplay(
@@ -50,10 +47,7 @@ fun PhoneNavDisplay(
     librariesRes: Int,
     preferredNetworkCount: Int,
     onCarAdded: (VehiclePreset) -> Unit,
-    onNavigateTo: (LatLon) -> Unit,
     onOpenStop: (PlannedStop) -> Unit,
-    /** A charger tapped in "charge now": the same detail sheet a trip stop gets. */
-    onOpenSite: (ChargeSite) -> Unit,
     onSendToMaps: (String) -> Unit,
     onTripEnded: () -> Unit,
     /** The committed destination's name, the active route page's title. */
@@ -72,9 +66,6 @@ fun PhoneNavDisplay(
             rememberSaveableStateHolderNavEntryDecorator(),
             rememberViewModelStoreNavEntryDecorator(),
         ),
-        // Held across recompositions: NavDisplay recalculates every scene when
-        // the list changes, and strategies compare by identity.
-        sceneStrategies = remember { listOf(SheetSceneStrategy()) },
         transitionSpec = {
             // The page underneath stays opaque; below it the map and drawer would show through.
             slideInHorizontally(ChargeAheadMotion.page()) { it } togetherWith ExitTransition.KeepUntilTransitionsFinished
@@ -170,13 +161,6 @@ fun PhoneNavDisplay(
                 Page(title = stringResource(Res.string.drawer_licenses), onBack = navigator::back) { pagePadding ->
                     LicensesRoute(librariesRes = librariesRes, modifier = Modifier.fillMaxSize().padding(pagePadding))
                 }
-            }
-
-            entry<ChargeNow>(metadata = SheetSceneStrategy.sheet()) {
-                ChargeNowRoute(
-                    onNavigate = { candidate -> onNavigateTo(candidate.site.position) },
-                    onOpen = { candidate -> onOpenSite(candidate.site) },
-                )
             }
         },
         modifier = modifier,
