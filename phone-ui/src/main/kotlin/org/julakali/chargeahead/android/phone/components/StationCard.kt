@@ -56,7 +56,7 @@ fun StationCard(
             onSend?.let {
                 GoButton(
                     // Every hand-off to Maps carries this icon.
-                    icon = painterResource(R.drawable.ic_destination),
+                    icon = painterResource(R.drawable.ic_near_me),
                     contentDescription = sendContentDescription,
                     onClick = it,
                 )

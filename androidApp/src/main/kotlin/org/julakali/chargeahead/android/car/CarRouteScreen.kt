@@ -184,7 +184,7 @@ class CarRouteScreen(
 
     /** Strip actions render icon-only on most hosts. */
     private fun navigateAction(plan: TripPlan): Action = Action.Builder()
-        .setIcon(icon(R.drawable.ic_destination))
+        .setIcon(icon(R.drawable.ic_near_me))
         .setOnClickListener { startNavigation(plan) }
         .build()
 

@@ -146,7 +146,7 @@ fun ChargeStopDetailSheet(
             modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 24.dp),
         ) {
             Icon(
-                painterResource(R.drawable.ic_destination),
+                painterResource(R.drawable.ic_near_me),
                 contentDescription = null,
                 modifier = Modifier.size(15.dp),
             )
