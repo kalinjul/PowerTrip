@@ -19,7 +19,8 @@ enum Fixtures {
             address: nil,
             sources: [],
             liveStatusId: nil,
-            networkKey: nil
+            networkKey: nil,
+            adHocTariffs: []
         )
     }
 

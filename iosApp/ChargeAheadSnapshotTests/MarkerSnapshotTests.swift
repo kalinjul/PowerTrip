@@ -1,3 +1,4 @@
+import Shared
 import SwiftUI
 import XCTest
 @testable import ChargeAhead
@@ -15,6 +16,17 @@ final class MarkerSnapshotTests: XCTestCase {
                 ChargerPill(charger: Fixtures.charger("Tesla Supercharger", operator: "Tesla", powerKw: 250, availability: Fixtures.outOfOrder))
             },
             named: "pills"
+        )
+    }
+
+    func testChargeNowCallout() {
+        let candidate = Fixtures.candidate(Fixtures.ionity, km: 3.4)
+        assertLightAndDark(
+            OverMap {
+                ChargeNowCallout(rank: 1, color: Brand.operatorColor(candidate.site), title: "Ionity", meta: chargeNowMeta(candidate))
+                ChargeNowCallout(rank: 2, color: Brand.operatorColor(Fixtures.enbw), title: "EnBW mobility+ Ladepark Kassel Niestetal", meta: chargeNowMeta(Fixtures.candidate(Fixtures.enbw, km: 7.9)))
+            },
+            named: "callout"
         )
     }
 

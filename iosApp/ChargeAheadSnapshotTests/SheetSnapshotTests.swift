@@ -27,7 +27,7 @@ final class SheetSnapshotTests: XCTestCase {
             more: [Fixtures.candidate(Fixtures.aral, km: 12.1)]
         )
         assertLightAndDark(
-            ChargeNowContent(state: ChargeNowUiStateReady(result: result), onNavigate: { _ in }, onOpen: { _ in })
+            ChargeNowContent(state: ChargeNowUiStateReady(result: result), selectedSiteId: Fixtures.ionity.id, onNavigate: { _ in }, onOpen: { _ in })
                 .frame(width: 402, height: 520)
                 .background(Color(.systemBackground)),
             named: "charge-now"

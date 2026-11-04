@@ -60,6 +60,16 @@ struct PlanBody: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if plan.needsReplan {
+                Text(localized("trip_stop_missing"))
+                    .font(.footnote)
+                    .foregroundStyle(Brand.onErrorContainer)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(9)
+                    .background(Brand.errorContainer, in: RoundedRectangle(cornerRadius: 4))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+            }
             if selection.selecting {
                 SectionHint(waitingForSecond: selection.a != nil && selection.b == nil)
                     .padding(.horizontal, 16)
@@ -75,6 +85,7 @@ struct PlanBody: View {
                     ScrollView {
                         StopRail(plan: plan, startSocPercent: startSocPercent, selection: selection, now: now, actions: actions)
                             .padding(.horizontal, 16)
+                            .padding(.vertical, 4)
                     }
                     .transition(.move(edge: .leading).combined(with: .opacity))
                 }
@@ -174,7 +185,7 @@ private struct TripButtons: View {
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onSend) {
-                Label(localized("trip_send_maps"), systemImage: "flag.fill")
+                Label(localized("trip_send_maps"), systemImage: "location.fill")
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity)
@@ -196,7 +207,15 @@ private struct TripButtons: View {
     }
 }
 
-/// Start, stops and destination on one vertical line; while picking a section, a tap picks the point.
+private let markerSize: CGFloat = 24
+private let markerGap: CGFloat = 10
+private let cardPadding: CGFloat = 12
+private let rowPadding: CGFloat = 9
+private let lineGap: CGFloat = 3
+private let secondLineInset = markerSize + markerGap
+
+/// Start, a card per stop and the destination, the drives between them on a dotted line;
+/// while picking a section, a tap picks the point.
 struct StopRail: View {
     let plan: TripPlan
     let startSocPercent: Double?
@@ -206,61 +225,53 @@ struct StopRail: View {
 
     var body: some View {
         let last = plan.stops.count + 1
+        let legs = plan.legs
         VStack(spacing: 0) {
-            RailRow(
-                index: 0,
-                last: last,
-                selection: selection,
-                trailingEdit: actions.startSocEdit.map { _ in localized("trip_soc_edit") },
-                onTap: { selection.selecting ? actions.pointPicked(0) : actions.startSocEdit?() }
-            ) {
-                TerminusDot(color: Brand.start, square: false)
-            } content: {
-                Text(localized("trip_start")).font(.subheadline.weight(.semibold))
-                MetaLine(startSocPercent.map { localized("trip_dep_now", Int32($0.rounded())) } ?? localized("trip_dep_now_unknown"))
-            }
+            EndRow(
+                title: plan.startAddress ?? localized("trip_start"),
+                time: etaText(0, now: now),
+                level: startSocPercent,
+                levelUnknown: localized("trip_dep_now_unknown"),
+                temperatureC: plan.route.startTemperatureC?.doubleValue,
+                selected: picked(0),
+                editDescription: actions.startSocEdit.map { _ in localized("trip_soc_edit") },
+                onTap: selection.selecting ? { actions.pointPicked(0) } : actions.startSocEdit
+            )
             ForEach(Array(plan.stops.enumerated()), id: \.element.site.id) { offset, stop in
                 let index = offset + 1
-                RailRow(
+                LegRow(leg: legs[offset], inSection: picked(offset) && picked(index))
+                StopCard(
                     index: index,
-                    last: last,
-                    selection: selection,
+                    stop: stop,
+                    arrival: etaText(stop.arrivalMinutesFromStart, now: now),
+                    selected: picked(index),
                     onTap: { selection.selecting ? actions.pointPicked(index) : actions.stopOpened(stop) }
-                ) {
-                    RankBadge(number: index, color: Brand.operatorColor(stop.site))
-                } content: {
-                    Text(stop.site.operator ?? stop.site.name)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    MetaLine(localized(
-                        "trip_stop_charge",
-                        Int32(stop.maxPowerKw.rounded()),
-                        Int32(stop.arrivalSocPercent.rounded()),
-                        Int32(stop.departureSocPercent.rounded())
-                    ))
-                    MetaLine(localized(
-                        "trip_stop_times",
-                        etaText(stop.arrivalMinutesFromStart, now: now),
-                        etaText(stop.arrivalMinutesFromStart + stop.chargeMinutes, now: now)
-                    ))
-                }
+                )
                 .accessibilityIdentifier("trip-stop")
             }
-            RailRow(
-                index: last,
-                last: last,
-                selection: selection,
-                trailingEdit: actions.arrivalSocEdit.map { _ in localized("trip_arrival_soc_edit") },
-                onTap: { selection.selecting ? actions.pointPicked(last) : actions.arrivalSocEdit?() }
-            ) {
-                TerminusDot(color: Brand.error, square: true)
-            } content: {
-                Text(plan.destination.name)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                MetaLine(localized("trip_arr", etaText(plan.totalMinutes, now: now), Int32(plan.arrivalSocPercent.rounded())))
+            LegRow(leg: legs[last - 1], inSection: picked(last - 1) && picked(last))
+            EndRow(
+                title: plan.destination.name,
+                time: etaText(plan.totalMinutes, now: now),
+                level: plan.arrivalSocPercent,
+                temperatureC: plan.route.destinationTemperatureC?.doubleValue,
+                selected: picked(last),
+                editDescription: actions.arrivalSocEdit.map { _ in localized("trip_arrival_soc_edit") },
+                onTap: selection.selecting ? { actions.pointPicked(last) } : actions.arrivalSocEdit
+            )
+            if let attribution = plan.route.endTemperaturesAttribution {
+                Text(attribution)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, cardPadding)
+                    .padding(.vertical, 8)
             }
         }
+    }
+
+    private func picked(_ index: Int) -> Bool {
+        selection.selecting && selection.includes(index: Int32(index))
     }
 }
 
@@ -270,117 +281,230 @@ private struct UnreachableRail: View {
     let actions: TripActions
 
     var body: some View {
-        let none = SectionSelection(selecting: false, a: nil, b: nil)
         VStack(spacing: 0) {
-            RailRow(index: 0, last: 2, selection: none, trailingEdit: localized("trip_soc_edit"), onTap: { actions.startSocEdit?() }) {
-                TerminusDot(color: Brand.start, square: false)
-            } content: {
-                Text(localized("trip_start")).font(.subheadline.weight(.semibold))
-                MetaLine(trip.startSocPercent.map { localized("trip_dep_now", Int32($0.doubleValue.rounded())) } ?? localized("trip_dep_now_unknown"))
-            }
-            RailRow(index: 1, last: 2, selection: none, onTap: nil) {
-                Image(systemName: "exclamationmark.circle").foregroundStyle(Brand.error)
-            } content: {
+            EndRow(
+                title: localized("trip_start"),
+                level: trip.startSocPercent?.doubleValue,
+                levelUnknown: localized("trip_dep_now_unknown"),
+                editDescription: localized("trip_soc_edit"),
+                onTap: actions.startSocEdit
+            )
+            HStack(spacing: markerGap) {
+                Image(systemName: "exclamationmark.circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Brand.error)
+                    .frame(width: markerSize, height: markerSize)
                 Text(ChargeStopFormatter.shared.unreachableMessage(why: trip.why))
                     .font(.subheadline)
                     .foregroundStyle(Brand.error)
             }
-            RailRow(index: 2, last: 2, selection: none, trailingEdit: localized("trip_arrival_soc_edit"), onTap: { actions.arrivalSocEdit?() }) {
-                TerminusDot(color: Brand.error, square: true)
-            } content: {
-                Text(trip.destination.name)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, cardPadding)
+            .padding(.vertical, 6)
+            EndRow(
+                title: trip.destination.name,
+                editDescription: localized("trip_arrival_soc_edit"),
+                onTap: actions.arrivalSocEdit
+            )
         }
     }
 }
 
-/// One rail row: the line segment, the dot, the text; a picked section tints the row.
-private struct RailRow<Dot: View, Content: View>: View {
-    let index: Int
-    let last: Int
-    let selection: SectionSelection
-    var trailingEdit: String?
+/// The trip's start or destination: a pin, the name and one time, the charge level and the forecast below.
+private struct EndRow: View {
+    let title: String
+    var time: String? = nil
+    var level: Double? = nil
+    /// Stands in for an unknown level; without either the row has no second line.
+    var levelUnknown: String? = nil
+    var temperatureC: Double? = nil
+    var selected = false
+    /// Names what a tap edits and shows the pen; `nil` on a row that edits nothing.
+    let editDescription: String?
     let onTap: (() -> Void)?
-    @ViewBuilder let dot: () -> Dot
-    @ViewBuilder let content: () -> Content
-
-    private static var dotSize: CGFloat { 28 }
-    private static var dotTop: CGFloat { 8 }
 
     var body: some View {
-        let selected = selection.selecting && selection.includes(index: Int32(index))
-        HStack(alignment: .top, spacing: 0) {
-            ZStack(alignment: .top) {
-                // The line stops short of the dot, so the dot needs no disc in whatever colour the row sits on.
-                GeometryReader { geometry in
-                    let x = geometry.size.width / 2
-                    let gap: CGFloat = 3
-                    Path { path in
-                        if index != 0 {
-                            path.move(to: CGPoint(x: x, y: 0))
-                            path.addLine(to: CGPoint(x: x, y: Self.dotTop - gap))
-                        }
-                        if index != last {
-                            path.move(to: CGPoint(x: x, y: Self.dotTop + Self.dotSize + gap))
-                            path.addLine(to: CGPoint(x: x, y: geometry.size.height))
-                        }
-                    }
-                    .stroke(Color(.separator), lineWidth: 2)
-                }
-                dot()
-                    .frame(width: Self.dotSize, height: Self.dotSize)
-                    .padding(.top, Self.dotTop)
+        let hasSecondLine = level != nil || levelUnknown != nil || temperatureC != nil
+        VStack(alignment: .leading, spacing: lineGap) {
+            HStack(spacing: 0) {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Brand.primary)
+                    .frame(width: markerSize, height: markerSize)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .padding(.leading, markerGap)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !hasSecondLine { EditPen(description: editDescription) }
+                if let time { ClockText(time) }
             }
-            .frame(width: 36)
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) { content() }
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity, minHeight: Self.dotSize + Self.dotTop, alignment: .leading)
-                    if let trailingEdit {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 12)
-                            .padding(.trailing, 6)
-                            .accessibilityLabel(trailingEdit)
+            if hasSecondLine {
+                HStack(spacing: 6) {
+                    if let level {
+                        BatteryIcon(percent: level)
+                        LevelText(percent: level)
+                    } else if let levelUnknown {
+                        MetaLine(levelUnknown)
+                    }
+                    EditPen(description: editDescription)
+                    if let temperatureC {
+                        Spacer()
+                        MetaLine(localized("trip_temperature", Int32(temperatureC.rounded())))
                     }
                 }
-                if index != last { Divider() }
-            }
-            .padding(.leading, 4)
-        }
-        .background {
-            if selected {
-                Brand.primaryContainer.clipShape(spanShape)
+                .padding(.leading, secondLineInset)
             }
         }
+        .padding(.horizontal, cardPadding)
+        .padding(.vertical, rowPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(selected ? Brand.primaryContainer : Color.clear, in: RoundedRectangle(cornerRadius: 16))
         .contentShape(Rectangle())
         .onTapGesture { onTap?() }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(onTap == nil ? [] : .isButton)
     }
+}
 
-    /// Corners only where the picked span begins or ends, so the tint reads as one block.
-    private var spanShape: UnevenRoundedRectangle {
-        let top: CGFloat = selection.includes(index: Int32(index - 1)) ? 0 : 10
-        let bottom: CGFloat = selection.includes(index: Int32(index + 1)) ? 0 : 10
-        return UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: bottom, bottomTrailingRadius: bottom, topTrailingRadius: top)
+/// One stop as a card: operator, town and arrival, then the levels, the power and the charging time.
+private struct StopCard: View {
+    let index: Int
+    let stop: PlannedStop
+    let arrival: String
+    let selected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: lineGap) {
+                HStack(spacing: 0) {
+                    RankBadge(number: index, color: Brand.primary, textColor: Brand.onPrimary)
+                    HStack(spacing: 6) {
+                        Text(stop.site.operator ?? stop.site.name)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        if let town = stop.site.address?.town {
+                            Text(town)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.leading, markerGap)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    ClockText(arrival)
+                }
+                HStack(spacing: 6) {
+                    BatteryIcon(percent: stop.arrivalSocPercent)
+                    HStack(spacing: 3) {
+                        LevelText(percent: stop.arrivalSocPercent)
+                        Image(systemName: "arrow.right").font(.system(size: 11, weight: .semibold))
+                        LevelText(percent: stop.departureSocPercent)
+                    }
+                    MetaLine("·")
+                    MetaLine(localized("garage_kw", Int32(stop.maxPowerKw.rounded())))
+                    Spacer()
+                    MetaLine(durationText(stop.chargeMinutes))
+                }
+                .padding(.leading, secondLineInset)
+            }
+            .padding(.horizontal, cardPadding)
+            .padding(.vertical, rowPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? Brand.primaryContainer : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(selected ? Brand.onPrimaryContainer : .primary)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
-private struct TerminusDot: View {
-    let color: Color
-    let square: Bool
+/// The drive to the row below: a dotted line under the markers, time and distance beside it.
+private struct LegRow: View {
+    let leg: TripLeg
+    let inSection: Bool
 
     var body: some View {
-        if square {
-            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 12, height: 12)
-        } else {
-            Circle().fill(color).frame(width: 12, height: 12)
+        Text("\(durationText(leg.driveMinutes)) · \(localized("trip_summary_distance", Int32(leg.distanceKm.rounded())))")
+            .font(.caption)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, cardPadding + secondLineInset)
+            .padding(.vertical, 6)
+            .background {
+                GeometryReader { box in
+                    let x = cardPadding + markerSize / 2
+                    Path { path in
+                        path.move(to: CGPoint(x: x, y: 2))
+                        path.addLine(to: CGPoint(x: x, y: box.size.height - 2))
+                    }
+                    .stroke(inSection ? Brand.primary : Color(.separator), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [0, 5]))
+                }
+            }
+    }
+}
+
+private struct EditPen: View {
+    let description: String?
+
+    var body: some View {
+        if let description {
+            Image(systemName: "pencil")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(description)
         }
+    }
+}
+
+private struct ClockText: View {
+    let time: String
+
+    init(_ time: String) { self.time = time }
+
+    var body: some View {
+        Text(time)
+            .font(.subheadline.weight(.semibold))
+            .monospacedDigit()
+            .lineLimit(1)
+            .padding(.leading, 8)
+    }
+}
+
+private struct LevelText: View {
+    let percent: Double
+
+    var body: some View {
+        Text(localized("garage_percent", Int32(percent.rounded())))
+            .font(.footnote.weight(.medium))
+            .monospacedDigit()
+            .lineLimit(1)
+    }
+}
+
+/// A horizontal battery, filled to the level.
+private struct BatteryIcon: View {
+    let percent: Double
+
+    var body: some View {
+        Canvas { context, size in
+            let color = GraphicsContext.Shading.color(.secondary)
+            let stroke: CGFloat = 1.5
+            let nub: CGFloat = 2
+            let bodyWidth = size.width - nub
+            let body = CGRect(x: stroke / 2, y: stroke / 2, width: bodyWidth - stroke, height: size.height - stroke)
+            context.stroke(Path(roundedRect: body, cornerRadius: 2.5), with: color, lineWidth: stroke)
+            context.fill(Path(roundedRect: CGRect(x: bodyWidth, y: size.height * 0.3, width: nub, height: size.height * 0.4), cornerRadius: 1), with: color)
+            let inset = stroke * 2
+            let cell = body.insetBy(dx: inset, dy: inset)
+            let width = cell.width * min(1, max(0, percent / 100))
+            context.fill(Path(roundedRect: CGRect(x: cell.minX, y: cell.minY, width: width, height: cell.height), cornerRadius: 1), with: color)
+        }
+        .frame(width: 20, height: 11)
+        .accessibilityHidden(true)
     }
 }
 

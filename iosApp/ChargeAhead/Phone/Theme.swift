@@ -11,6 +11,8 @@ enum Brand {
     /// The trip's start and "go" accents.
     static let start = Color(light: 0x188038, dark: 0x81C995)
     static let error = Color(light: 0xD93025, dark: 0xF28B82)
+    static let errorContainer = Color(light: 0xF9DEDC, dark: 0x8C1D18)
+    static let onErrorContainer = Color(light: 0x410E0B, dark: 0xF9DEDC)
     static let sectionOutline = Color(light: 0xA8C7FA, dark: 0x4A6FA5)
 
     static func mode(_ mode: ChargeMode) -> Color {
@@ -57,12 +59,13 @@ private extension UIColor {
 struct RankBadge: View {
     let number: Int
     let color: Color
+    var textColor: Color = .white
 
     var body: some View {
         Text("\(number)")
             .font(.caption2.weight(.heavy))
             .monospacedDigit()
-            .foregroundStyle(.white)
+            .foregroundStyle(textColor)
             .frame(width: 24, height: 24)
             .background(color, in: Circle())
     }

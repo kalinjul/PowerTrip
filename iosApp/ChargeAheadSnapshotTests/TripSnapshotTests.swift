@@ -22,6 +22,10 @@ final class TripSnapshotTests: XCTestCase {
         assertLightAndDark(sheet(Fixtures.planned()), named: "trip")
     }
 
+    func testListWithForecast() {
+        assertLightAndDark(sheet(Fixtures.planned(Fixtures.planWithForecast), height: 600), named: "trip")
+    }
+
     func testListSectionPicked() {
         assertLightAndDark(sheet(Fixtures.planned(selection: SectionSelection(selecting: true, a: 1, b: 3))), named: "trip")
     }
@@ -44,7 +48,8 @@ final class TripSnapshotTests: XCTestCase {
             selection: Fixtures.noSelection,
             planning: false,
             startPosition: Fixtures.hamburg,
-            socInput: nil
+            socInput: nil,
+            shownOnMap: false
         )
         assertLightAndDark(
             NavigationStack {

@@ -27,6 +27,7 @@ final class PhoneSession: ObservableObject {
     let trip: TripViewModel
     let search: SearchViewModel
     let activeRoute: ActiveRouteViewModel
+    let chargeNow: ChargeNowViewModel
     let phoneApp: PhoneAppViewModel
 
     init() {
@@ -37,6 +38,7 @@ final class PhoneSession: ObservableObject {
         trip = viewModels.trip()
         search = viewModels.search()
         activeRoute = viewModels.activeRoute()
+        chargeNow = viewModels.chargeNow()
         phoneApp = viewModels.phoneApp()
     }
 }
@@ -110,8 +112,13 @@ struct PhoneRoot: View {
                     query: $query,
                     command: $command,
                     onSettings: { overlay = .settings(nil) },
-                    onChargeNow: { overlay = .chargeNow },
-                    onActiveRoute: { path = [.activeRoute] }
+                    onChargeNow: {
+                        session.chargeNow.onSheetOpened()
+                        overlay = .chargeNow
+                    },
+                    onActiveRoute: { path = [.activeRoute] },
+                    // The search panel would open under the sheet.
+                    onSearchOpened: { if overlay == .chargeNow { overlay = nil } }
                 )
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: PhonePage.self) { _ in
@@ -267,6 +274,7 @@ private struct HomeScreen: View {
     let onSettings: () -> Void
     let onChargeNow: () -> Void
     let onActiveRoute: () -> Void
+    let onSearchOpened: () -> Void
 
     @Namespace private var mapScope
 
@@ -276,7 +284,9 @@ private struct HomeScreen: View {
         let sheet = trip as? TripUiStateSheet
         let plan = (sheet as? TripUiStatePlanned)?.plan
         GeometryReader { geometry in
-            Observing(home.uiState, search.uiState) { homeState, searchState in
+            Observing(home.uiState, search.uiState, session.chargeNow.uiState) { homeState, searchState, chargeNowState in
+                let chargeNow = chargeNowState as? ChargeNowSheetUiStateOpen
+                let height = geometry.size.height + geometry.safeAreaInsets.bottom
                 HomeContent(
                     home: homeState,
                     search: searchState,
@@ -293,7 +303,10 @@ private struct HomeScreen: View {
                         chargeNow: onChargeNow,
                         activeRoute: onActiveRoute,
                         modeDismissed: { home.onModeDismissed() },
-                        searchOpened: { search.onOpened(prefill: nil) },
+                        searchOpened: {
+                            onSearchOpened()
+                            search.onOpened(prefill: nil)
+                        },
                         searchClosed: {
                             query = ""
                             search.onClosed()
@@ -313,11 +326,17 @@ private struct HomeScreen: View {
                         position: homeState.position,
                         chargers: homeState.chargers,
                         plan: plan,
+                        chargeNow: chargeNow,
                         command: command,
-                        bottomInset: sheet != nil ? (geometry.size.height + geometry.safeAreaInsets.bottom) * TripSheetDetents.peekFraction : 0,
+                        bottomInset: sheet != nil ? height * TripSheetDetents.peekFraction : (chargeNow != nil ? height * ChargeNowSheetDetents.mediumFraction : 0),
                         onViewportChanged: { home.onViewportChanged(viewport: $0) },
                         onChargerTapped: { home.onChargerSelected(charger: $0) },
-                        onStopTapped: { home.onSiteSelected(site: $0.site) }
+                        onStopTapped: { home.onSiteSelected(site: $0.site) },
+                        onCandidateTapped: { session.chargeNow.onCandidateSelected(siteId: $0.site.id) },
+                        onCandidateOpened: { candidate in
+                            session.chargeNow.onCandidateSelected(siteId: candidate.site.id)
+                            home.onSiteSelected(site: candidate.site)
+                        }
                     )
                 } compass: {
                     MapCompass(scope: mapScope)
@@ -341,6 +360,12 @@ enum TripSheetDetents {
     static let peekFraction: CGFloat = 1 / 3
     static let peek = PresentationDetent.fraction(peekFraction)
     static let full = PresentationDetent.fraction(0.85)
+}
+
+/// "Charge now" sits at half height over the live map, like the trip sheet at its peek.
+enum ChargeNowSheetDetents {
+    static let mediumFraction: CGFloat = 1 / 2
+    static let medium = PresentationDetent.fraction(mediumFraction)
 }
 
 /// The overlay sheet and the alerts, attached to whichever view presents on top right now.
@@ -411,9 +436,12 @@ private struct PhoneOverlays: ViewModifier {
             SettingsView(feature: session.feature, startPage: page)
         case .chargeNow:
             ChargeNowView(
-                feature: session.feature,
+                model: session.chargeNow,
                 onNavigate: { openNavigation(to: $0.site.position) },
-                onOpen: { session.home.onSiteSelected(site: $0.site) }
+                onOpen: { candidate in
+                    session.chargeNow.onCandidateSelected(siteId: candidate.site.id)
+                    session.home.onSiteSelected(site: candidate.site)
+                }
             )
             .sheet(item: Binding(
                 get: { home.selectedStop.map { SelectedStop(stop: $0) } },
@@ -421,7 +449,8 @@ private struct PhoneOverlays: ViewModifier {
             )) { selected in
                 stopDetail(selected.stop, home)
             }
-            .presentationDetents([.medium, .large])
+            .presentationDetents([ChargeNowSheetDetents.medium, .large])
+            .presentationBackgroundInteraction(.enabled(upThrough: ChargeNowSheetDetents.medium))
         case .stopDetail:
             if let stop = home.selectedStop {
                 stopDetail(stop, home)

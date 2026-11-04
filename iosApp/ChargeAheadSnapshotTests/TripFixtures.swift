@@ -22,7 +22,8 @@ extension Fixtures {
             address: Address(street: street, postalCode: nil, town: town),
             sources: [],
             liveStatusId: nil,
-            networkKey: nil
+            networkKey: nil,
+            adHocTariffs: []
         )
     }
 
@@ -43,27 +44,45 @@ extension Fixtures {
             etaMinutesFromStart: drive + minutes + 5,
             maxPowerKw: site.connectors.first?.maxPowerKw ?? 0,
             stopMinutes: 5,
-            savesMinutes: nil
+            savesMinutes: nil,
+            siteMissing: false
         )
     }
 
-    static let plan = TripPlan(
-        route: Route(points: [hamburg, munich], distanceKm: 776, durationMinutes: 452, segments: []),
-        destination: munichDestination,
-        stops: [
-            stop(ionity, km: 168, arrival: 24, departure: 78, kwh: 41, minutes: 22, drive: 98),
-            stop(enbw, km: 398, arrival: 18, departure: 80, kwh: 47, minutes: 27, drive: 260),
-            stop(aral, km: 612, arrival: 21, departure: 65, kwh: 33, minutes: 18, drive: 403),
+    static let plan = plan(route: Route(points: [hamburg, munich], distanceKm: 776, durationMinutes: 452, segments: [], weatherAttribution: nil))
+
+    /// The same trip with a forecast at both ends and the notice that must stand next to it.
+    static let planWithForecast = plan(route: Route(
+        points: [hamburg, munich],
+        distanceKm: 776,
+        durationMinutes: 452,
+        segments: [
+            RouteSegment(fromKm: 0, distanceKm: 388, durationMinutes: 226, ascentM: 120, descentM: 80, temperatureC: 12),
+            RouteSegment(fromKm: 388, distanceKm: 388, durationMinutes: 226, ascentM: 310, descentM: 140, temperatureC: 4),
         ],
-        driveMinutes: 452,
-        chargeMinutes: 67,
-        arrivalSocPercent: 15,
-        stopMinutes: 15
-    )
+        weatherAttribution: "Wetterdaten: Deutscher Wetterdienst"
+    ))
+
+    private static func plan(route: Route) -> TripPlan {
+        TripPlan(
+            route: route,
+            destination: munichDestination,
+            stops: [
+                stop(ionity, km: 168, arrival: 24, departure: 78, kwh: 41, minutes: 22, drive: 98),
+                stop(enbw, km: 398, arrival: 18, departure: 80, kwh: 47, minutes: 27, drive: 260),
+                stop(aral, km: 612, arrival: 21, departure: 65, kwh: 33, minutes: 18, drive: 403),
+            ],
+            driveMinutes: 452,
+            chargeMinutes: 67,
+            arrivalSocPercent: 15,
+            stopMinutes: 15,
+            startAddress: "Feldstraße 66, Hamburg"
+        )
+    }
 
     static let noSelection = SectionSelection(selecting: false, a: nil, b: nil)
 
-    static func planned(selection: SectionSelection = noSelection) -> TripUiStatePlanned {
+    static func planned(_ plan: TripPlan = plan, selection: SectionSelection = noSelection) -> TripUiStatePlanned {
         TripUiStatePlanned(
             plan: plan,
             startPosition: hamburg,
