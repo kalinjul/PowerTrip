@@ -22,7 +22,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Fully qualified: podman has no implicit default registry.
 IMAGE="docker.io/library/eclipse-temurin:25"   # CI: setup-java temurin 25
 PLATFORM="linux/amd64"            # CI: ubuntu-latest, x64
-LINUX_HOME="${CHARGEAHEAD_LINUX_HOME:-$HOME/.chargeahead-linux}"
+LINUX_HOME="${POWERTRIP_LINUX_HOME:-$HOME/.powertrip-linux}"
 
 case "${1:-validate}" in
   validate) TASK=":ui-tests:validateDebugScreenshotTest" ;;
@@ -31,8 +31,8 @@ case "${1:-validate}" in
 esac
 shift || true
 
-# CHARGEAHEAD_CONTAINER_ENGINE picks one when both are installed.
-ENGINE="${CHARGEAHEAD_CONTAINER_ENGINE:-}"
+# POWERTRIP_CONTAINER_ENGINE picks one when both are installed.
+ENGINE="${POWERTRIP_CONTAINER_ENGINE:-}"
 if [ -z "$ENGINE" ]; then
   for candidate in docker podman; do
     command -v "$candidate" >/dev/null && { ENGINE="$candidate"; break; }

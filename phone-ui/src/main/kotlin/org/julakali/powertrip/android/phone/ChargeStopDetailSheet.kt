@@ -1,0 +1,157 @@
+package org.julakali.powertrip.android.phone
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.unit.dp
+import org.julakali.powertrip.android.phone.R
+import org.julakali.powertrip.android.phone.theme.tabular
+import org.julakali.powertrip.android.phone.components.AppSheet
+import org.julakali.powertrip.android.phone.components.Fineprint
+import org.julakali.powertrip.android.phone.components.NetworkDot
+import org.julakali.powertrip.android.phone.components.SectionLabel
+import org.julakali.powertrip.shared.ChargeStopFormatter
+import org.julakali.powertrip.shared.domain.MapsHandoff
+import org.julakali.powertrip.shared.domain.ChargeStop
+import org.julakali.powertrip.shared.domain.LiveConnectorGroup
+import org.julakali.powertrip.shared.resources.Res
+import org.julakali.powertrip.shared.resources.fmt_adhoc_price
+import org.julakali.powertrip.shared.resources.phone_detail_connectors
+import org.julakali.powertrip.shared.resources.phone_detail_navigate
+import org.julakali.powertrip.shared.resources.phone_detail_source
+import org.julakali.powertrip.shared.resources.phone_detail_unknown_connectors
+
+/**
+ * Charging stop details as a bottom sheet over the map. With [live] charge
+ * points the connectors come from them alone, otherwise from the site's data.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChargeStopDetailSheet(
+    stop: ChargeStop,
+    live: List<LiveConnectorGroup>?,
+    onDismiss: () -> Unit,
+    onOpenMaps: (String) -> Unit,
+    /** Arrival and departure when the site is a planned stop. */
+    tripLine: String? = null,
+) {
+
+    AppSheet(onDismissRequest = onDismiss) {
+        Column {
+            // The network as the headline; the site name is not shown.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                NetworkDot(operatorColor(stop.site))
+                Text(
+                    stop.site.operator ?: stop.site.name,
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+            ChargeStopFormatter.addressLine(stop)?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
+            tripLine?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium.tabular,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
+            }
+        }
+
+        Column {
+            Text(ChargeStopFormatter.primaryLine(stop), style = MaterialTheme.typography.titleSmall)
+            Text(
+                ChargeStopFormatter.secondaryLine(stop),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Column {
+            // Live points replace the site's connectors: the two often disagree on count and power.
+            val liveGroups = live.orEmpty()
+            SectionLabel(stringResource(Res.string.phone_detail_connectors))
+            val connectorLines = if (liveGroups.isNotEmpty()) {
+                ChargeStopFormatter.liveConnectorLines(liveGroups)
+            } else {
+                ChargeStopFormatter.connectorLines(stop)
+            }
+            if (connectorLines.isEmpty()) {
+                Text(
+                    stringResource(Res.string.phone_detail_unknown_connectors),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                connectorLines.forEach {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        val tariffLines = ChargeStopFormatter.adHocTariffLines(stop.site)
+        if (tariffLines.isNotEmpty()) {
+            Column {
+                SectionLabel(stringResource(Res.string.fmt_adhoc_price))
+                tariffLines.forEach {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall.tabular,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        ChargeStopFormatter.sourceLine(stop)?.let { source ->
+            Fineprint(stringResource(Res.string.phone_detail_source, source))
+        }
+
+        Button(
+            onClick = {
+                onOpenMaps(MapsHandoff.geoUri(stop.site.position, stop.site.name))
+                onDismiss()
+            },
+            shape = MaterialTheme.shapes.medium,
+            // AppSheet leaves the bottom inset to whatever ends the sheet.
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 24.dp),
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_near_me),
+                contentDescription = null,
+                modifier = Modifier.size(15.dp),
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(stringResource(Res.string.phone_detail_navigate))
+        }
+    }
+}

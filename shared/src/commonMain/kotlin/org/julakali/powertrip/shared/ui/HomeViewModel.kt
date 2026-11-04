@@ -1,0 +1,196 @@
+package org.julakali.powertrip.shared.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import org.julakali.powertrip.shared.ChargeStopsFeature
+import org.julakali.powertrip.shared.combine
+import org.julakali.powertrip.shared.domain.BoundingBox
+import org.julakali.powertrip.shared.domain.ChargeSite
+import org.julakali.powertrip.shared.domain.ChargeStop
+import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.LiveConnectorGroup
+import org.julakali.powertrip.shared.domain.MapCharger
+import org.julakali.powertrip.shared.domain.usecases.LiveConnectorsObserver
+import org.julakali.powertrip.shared.domain.usecases.SetChargeModeInteractor
+import org.julakali.powertrip.shared.domain.usecases.MapChargersObserver
+import org.julakali.powertrip.shared.domain.ChargeMode
+import org.julakali.powertrip.shared.domain.Reachability
+import org.julakali.powertrip.shared.domain.usecases.RefreshChargerAvailabilityInteractor
+import org.julakali.powertrip.shared.domain.usecases.RefreshLiveConnectorsInteractor
+import org.julakali.powertrip.shared.domain.usecases.RefreshMapChargersInteractor
+import org.julakali.powertrip.shared.domain.PreferencesRepository
+import org.julakali.powertrip.shared.domain.distanceKmTo
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+/** The map screen. */
+data class HomeUiState(
+    val position: LatLon? = null,
+    val chargers: List<MapCharger> = emptyList(),
+    /** Zoomed out too far for markers. */
+    val belowMinZoom: Boolean = false,
+    /** The charger the driver tapped, as a detail dialog; `null` = no dialog. */
+    val selectedStop: ChargeStop? = null,
+    /** The selected site's live charge points; `null` without live data. */
+    val selectedStopLive: List<LiveConnectorGroup>? = null,
+    val filtersCustomized: Boolean = false,
+    /** AC mode or Stöbermodus, shown on the map so neither stays on by accident. */
+    val mode: ChargeMode = ChargeMode.NORMAL,
+    /** Location is running but has not delivered a position yet. */
+    val searchingLocation: Boolean = false,
+    /** Long enough without a fix to tell the driver; stays alongside [searchingLocation]. */
+    val locationUnavailable: Boolean = false,
+    /** The map's chargers are being refilled. */
+    val loadingSites: Boolean = false,
+)
+
+/**
+ * State holder for the map screen. The location pipeline itself lives in the
+ * app-scoped [ChargeStopsFeature].
+ */
+class HomeViewModel(
+    internal val feature: ChargeStopsFeature,
+    private val observeMapChargers: MapChargersObserver,
+    private val refreshMapChargers: RefreshMapChargersInteractor,
+    private val refreshChargerAvailability: RefreshChargerAvailabilityInteractor,
+    private val observeLiveConnectors: LiveConnectorsObserver,
+    private val refreshLiveConnectors: RefreshLiveConnectorsInteractor,
+    preferences: PreferencesRepository,
+    private val setChargeMode: SetChargeModeInteractor,
+    /** How long the button may spin before the map says something. */
+    private val locationTimeoutMillis: Long = DEFAULT_LOCATION_TIMEOUT_MILLIS,
+) : ViewModel() {
+
+    private val map = MutableStateFlow(MapState())
+
+    private val attempt = MutableStateFlow(LocationAttempt())
+    private var attemptJob: Job? = null
+    private var refreshJob: Job? = null
+
+    val uiState: StateFlow<HomeUiState> = combine(
+        feature.currentFix,
+        preferences.chargeFilters,
+        preferences.networks,
+        map,
+        observeLiveConnectors.flow,
+        observeMapChargers.flow,
+        attempt,
+        refreshMapChargers.inProgress,
+    ) { fix, filters, networks, mapState, selectedStopLive, mapChargers, attempt, loadingSites ->
+        val position = fix?.position
+        HomeUiState(
+            position = position,
+            chargers = mapChargers,
+            belowMinZoom = mapState.belowMinZoom,
+            selectedStop = mapState.selectedStop,
+            selectedStopLive = selectedStopLive.takeIf { mapState.selectedStop?.site?.liveStatusId != null },
+            filtersCustomized = !filters.isDefault || networks.isActive,
+            mode = ChargeMode.of(filters, networks),
+            // Gated on the position, so a late fix clears both.
+            searchingLocation = attempt.running && position == null,
+            locationUnavailable = attempt.timedOut && position == null,
+            loadingSites = loadingSites,
+        )
+    }.stateIn(viewModelScope, WhileUiSubscribed, HomeUiState())
+
+    init {
+        observeMapChargers(MapChargersObserver.Params(viewport = null))
+        observeLiveConnectors(LiveConnectorsObserver.Params(liveStatusId = null))
+    }
+
+    /** The mode pill was tapped: whichever mode is on goes off. */
+    fun onModeDismissed() {
+        viewModelScope.launch { setChargeMode(SetChargeModeInteractor.Params(ChargeMode.NORMAL)) }
+    }
+
+    /** Location permission granted: the pipeline may run. Calling it twice is harmless. */
+    fun onLocationPermissionGranted() {
+        feature.start()
+        beginLocating()
+    }
+
+    /** The location button was tapped with no position to center on. */
+    fun onLocateRequested() {
+        feature.start()
+        feature.locate()
+        beginLocating()
+    }
+
+    /** Marks an attempt as under way and gives it a deadline. A running attempt is left alone. */
+    private fun beginLocating() {
+        if (attemptJob?.isActive == true) return
+        attempt.value = LocationAttempt(running = true)
+        attemptJob = viewModelScope.launch {
+            val position = withTimeoutOrNull(locationTimeoutMillis) {
+                feature.currentFix.first { it != null }
+            }
+            if (position == null) attempt.update { it.copy(timedOut = true) }
+        }
+    }
+
+    /** `null` means: zoomed out past the point where markers are useful. */
+    fun onViewportChanged(viewport: BoundingBox?) {
+        map.update { it.copy(belowMinZoom = viewport == null) }
+        observeMapChargers(MapChargersObserver.Params(viewport))
+        // Latest viewport wins: a pan supersedes the fetch for the previous one.
+        refreshJob?.cancel()
+        // A failed refill leaves the stored markers and statuses; nothing to tell the driver.
+        refreshJob = viewport?.let {
+            viewModelScope.launch {
+                // Stored sites get their status right away, the ones the refill adds after it.
+                launch { refreshChargerAvailability(RefreshChargerAvailabilityInteractor.Params(it)) }
+                refreshMapChargers(RefreshMapChargersInteractor.Params(it))
+                refreshChargerAvailability(RefreshChargerAvailabilityInteractor.Params(it))
+            }
+        }
+    }
+
+    /** A tapped map marker becomes the same detail dialog the corridor list uses. */
+    fun onChargerSelected(charger: MapCharger) = onSiteSelected(charger.site)
+
+    /** Same dialog for a planned stop, tapped in the trip list or on its route marker. */
+    fun onSiteSelected(site: ChargeSite) {
+        val position = feature.currentFix.value?.position
+        map.update {
+            it.copy(
+                selectedStop = ChargeStop(
+                    site = site,
+                    distanceKm = position?.distanceKmTo(site.position) ?: 0.0,
+                    reachability = Reachability.UNKNOWN,
+                    socOnArrivalPercent = null,
+                ),
+            )
+        }
+        val liveStatusId = site.liveStatusId
+        observeLiveConnectors(LiveConnectorsObserver.Params(liveStatusId))
+        // The viewport's refresh may be a minute old by now; a failure keeps what is shown.
+        if (liveStatusId != null) {
+            viewModelScope.launch { refreshLiveConnectors(RefreshLiveConnectorsInteractor.Params(liveStatusId)) }
+        }
+    }
+
+    fun onSelectedStopDismissed() {
+        map.update { it.copy(selectedStop = null) }
+        observeLiveConnectors(LiveConnectorsObserver.Params(liveStatusId = null))
+    }
+
+    private data class LocationAttempt(
+        val running: Boolean = false,
+        val timedOut: Boolean = false,
+    )
+
+    private data class MapState(
+        val belowMinZoom: Boolean = false,
+        val selectedStop: ChargeStop? = null,
+    )
+
+    companion object {
+        const val DEFAULT_LOCATION_TIMEOUT_MILLIS = 20_000L
+    }
+}

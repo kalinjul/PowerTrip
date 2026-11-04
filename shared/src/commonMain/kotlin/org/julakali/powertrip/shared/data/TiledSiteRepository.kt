@@ -1,0 +1,278 @@
+package org.julakali.powertrip.shared.data
+
+import org.julakali.powertrip.shared.core.Coverage
+import org.julakali.powertrip.shared.core.Tiles
+import org.julakali.powertrip.shared.db.ChargeSiteDatabase
+import org.julakali.powertrip.shared.db.ChargeSiteEntity
+import org.julakali.powertrip.shared.db.CorridorCoverageEntity
+import org.julakali.powertrip.shared.db.TileCoverageEntity
+import org.julakali.powertrip.shared.logWarning
+import org.julakali.powertrip.shared.domain.Address
+import org.julakali.powertrip.shared.domain.ChargeSite
+import org.julakali.powertrip.shared.domain.ChargeSiteSource
+import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.MIN_DC_POWER_KW
+import org.julakali.powertrip.shared.domain.MapFilter
+import org.julakali.powertrip.shared.domain.PolylineArea
+import org.julakali.powertrip.shared.domain.BoundingBox
+import org.julakali.powertrip.shared.domain.SearchArea
+import org.julakali.powertrip.shared.domain.SiteRepository
+import org.julakali.powertrip.shared.domain.TimeProvider
+import org.julakali.powertrip.shared.domain.maxDcPowerKw
+import org.julakali.powertrip.shared.domain.maxPowerKw
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
+import kotlin.math.cos
+import kotlin.math.PI
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/**
+ * The on-disk store of charging sites.
+ *
+ * 1. **Reads always come from the database**; the source only replenishes it.
+ * 2. **If replenishing fails, what's already stored is still returned.** Only
+ *    when there's nothing stored at all is the failure propagated.
+ */
+class TiledSiteRepository(
+    private val source: ChargeSiteSource,
+    database: ChargeSiteDatabase,
+    private val time: TimeProvider,
+    /** Runs the fetches, so one survives the caller that started it for the others awaiting it. */
+    private val scope: CoroutineScope,
+    /** Maps the stored rows; the collector is usually a ViewModel on main. */
+    private val computation: CoroutineDispatcher,
+    private val ttlMillis: Long = DEFAULT_TTL_MILLIS,
+    private val prefetchMarginKm: Double = DEFAULT_PREFETCH_MARGIN_KM,
+) : SiteRepository {
+
+    private val dao = database.chargeSites()
+
+    // De-duplicates identical in-flight fetches.
+    private val inFlight = mutableMapOf<String, Deferred<Unit>>()
+    private val inFlightGuard = Mutex()
+
+    override suspend fun load(area: SearchArea, networkKeys: Set<String>) {
+        val key = requestKey(area, networkKeys)
+        val deferred = inFlightGuard.withLock {
+            inFlight[key] ?: scope.async {
+                try {
+                    loadSites(area, networkKeys)
+                } finally {
+                    // Drop it before the result is delivered, so the map only
+                    // ever holds live fetches.
+                    val self = coroutineContext.job
+                    withContext(NonCancellable) {
+                        inFlightGuard.withLock { if (inFlight[key] === self) inFlight.remove(key) }
+                    }
+                }
+            }.also { fetch -> inFlight[key] = fetch }
+        }
+        // await() outside the guard.
+        deferred.await()
+    }
+
+    private suspend fun loadSites(area: SearchArea, networkKeys: Set<String>) {
+        val keys = networkKeys.ifEmpty { setOf(ALL_NETWORKS) }
+        val missing = keys.filterNot { isCovered(area, it) }
+        if (missing.isEmpty()) return
+        val toFetch = if (networkKeys.isEmpty()) emptySet() else missing.toSet()
+        val fetchFailure = runCatching { fetchAndStore(area, toFetch, missing) }.exceptionOrNull() ?: return
+        logWarning("Source '${source.id}' did not respond", fetchFailure)
+        val box = area.boundingBox
+        if (!dao.hasSitesInBox(south = box.south, north = box.north, west = box.west, east = box.east)) throw fetchFailure
+    }
+
+    override suspend fun covers(area: SearchArea, networkKeys: Set<String>): Boolean =
+        networkKeys.ifEmpty { setOf(ALL_NETWORKS) }.all { isCovered(area, it) }
+
+    /** Discards coverage, not the sites themselves: the store stays readable. */
+    override suspend fun invalidate() {
+        dao.clearCoverage(source.id)
+    }
+
+    private fun requestKey(area: SearchArea, networkKeys: Set<String>): String {
+        val box = area.boundingBox
+        val keys = if (networkKeys.isEmpty()) ALL_NETWORKS else networkKeys.sorted().joinToString(",")
+        return "${box.south},${box.west},${box.north},${box.east}|$keys"
+    }
+
+    /**
+     * Has the area's shape been fetched for the given network key?
+     */
+    private suspend fun isCovered(area: SearchArea, networkKey: String): Boolean {
+        val notOlderThan = time.nowMillis() - ttlMillis
+        val box = area.boundingBox
+        val range = Tiles.rangeOf(box)
+        val freshTiles = dao.freshTilesIn(
+            sourceId = source.id,
+            networkKey = networkKey,
+            minTileLat = range.minTileLat.toLong(),
+            maxTileLat = range.maxTileLat.toLong(),
+            minTileLon = range.minTileLon.toLong(),
+            maxTileLon = range.maxTileLon.toLong(),
+            notOlderThanMillis = notOlderThan,
+        ).mapTo(HashSet()) { Tiles.Tile(it.tileLat.toInt(), it.tileLon.toInt()) }
+
+        val corridors = if (area is PolylineArea) {
+            dao.freshCorridorsIn(
+                sourceId = source.id,
+                networkKey = networkKey,
+                south = box.south,
+                west = box.west,
+                north = box.north,
+                east = box.east,
+                notOlderThanMillis = notOlderThan,
+            ).map { PolylineArea(it.points, it.bufferKm) }
+        } else {
+            emptyList()
+        }
+
+        return Coverage.isCovered(area, freshTiles, corridors)
+    }
+
+    // networkKeys = the networks to query the source with (missing ones only, empty for all).
+    // stampKeys = the network keys to stamp on every covered tile.
+    private suspend fun fetchAndStore(area: SearchArea, networkKeys: Set<String>, stampKeys: List<String>) {
+        // Records what the source was asked for: the tiles the shape fully
+        // contains, plus the route itself as a corridor. Never its box.
+        val fetchArea = area.prefetchArea(prefetchMarginKm)
+        val sites = source.query(fetchArea, networkKeys)
+        val now = time.nowMillis()
+        val tiles = Coverage.tilesToRecord(fetchArea)
+        val corridors = if (fetchArea is PolylineArea) {
+            val box = fetchArea.boundingBox
+            stampKeys.map { key ->
+                CorridorCoverageEntity(
+                    sourceId = source.id,
+                    networkKey = key,
+                    points = fetchArea.points,
+                    bufferKm = fetchArea.bufferKm,
+                    south = box.south,
+                    west = box.west,
+                    north = box.north,
+                    east = box.east,
+                    fetchedAtMillis = now,
+                )
+            }
+        } else {
+            emptyList()
+        }
+
+        dao.recordFetch(
+            sites = sites.map { site ->
+                ChargeSiteEntity(
+                    id = site.id,
+                    sourceId = source.id,
+                    name = site.name,
+                    operator = site.operator,
+                    operatorId = site.operatorId,
+                    lat = site.position.lat,
+                    lon = site.position.lon,
+                    connectors = site.connectors,
+                    street = site.address?.street,
+                    postalCode = site.address?.postalCode,
+                    town = site.address?.town,
+                    liveStatusId = site.liveStatusId,
+                    sources = site.sources,
+                    fetchedAtMillis = now,
+                    maxPowerKw = site.maxPowerKw,
+                    maxDcPowerKw = site.maxDcPowerKw,
+                    networkKey = site.networkKey,
+                    adHocTariffs = site.adHocTariffs,
+                )
+            },
+            tiles = stampKeys.flatMap { key ->
+                tiles.map { tile ->
+                    TileCoverageEntity(
+                        sourceId = source.id,
+                        networkKey = key,
+                        tileLat = tile.lat.toLong(),
+                        tileLon = tile.lon.toLong(),
+                        fetchedAtMillis = now,
+                    )
+                }
+            },
+            corridors = corridors,
+        )
+    }
+
+    override fun storedSitesIn(box: BoundingBox, filter: MapFilter): Flow<List<ChargeSite>> =
+        dao.observeFilteredSitesInBox(
+            south = box.south,
+            north = box.north,
+            west = box.west,
+            east = box.east,
+            slowMode = filter.slowMode,
+            slowBelowKw = MIN_DC_POWER_KW,
+            minPowerKw = filter.minPowerKw,
+            filterNetworks = filter.networks.isActive,
+            networkKeys = filter.networks.preferredOperators.toList(),
+        ).map { entities -> entities.map(ChargeSiteEntity::toDomain) }.flowOn(computation)
+
+    override fun storedSitesNearest(position: LatLon, box: BoundingBox, filter: MapFilter, limit: Int): Flow<List<ChargeSite>> {
+        val cosLat = cos(position.lat * PI / 180.0)
+        return dao.observeNearestFilteredSitesInBox(
+            south = box.south,
+            north = box.north,
+            west = box.west,
+            east = box.east,
+            slowMode = filter.slowMode,
+            slowBelowKw = MIN_DC_POWER_KW,
+            minPowerKw = filter.minPowerKw,
+            filterNetworks = filter.networks.isActive,
+            networkKeys = filter.networks.preferredOperators.toList(),
+            lat = position.lat,
+            lon = position.lon,
+            lonScale = cosLat * cosLat,
+            limit = limit,
+        ).map { entities -> entities.map(ChargeSiteEntity::toDomain) }.flowOn(computation)
+    }
+
+    override fun storedSitesIn(area: SearchArea): Flow<List<ChargeSite>> {
+        val boxes = if (area is PolylineArea) area.boxCover() else listOf(area.boundingBox)
+        return dao.observeSitesInBoxes(boxes)
+            .map { entities -> entities.map(ChargeSiteEntity::toDomain).filter { it.position in area } }
+            // The table changes on every fetch anywhere, mostly without touching this area.
+            .distinctUntilChanged()
+            .flowOn(computation)
+    }
+
+    override suspend fun storedSites(ids: Set<String>): Map<String, ChargeSite> =
+        ids.chunked(MAX_IDS_PER_QUERY).flatMap { dao.sitesById(it) }.associate { it.id to it.toDomain() }
+
+    companion object {
+        /** Below SQLite's limit on bound parameters. */
+        private const val MAX_IDS_PER_QUERY = 500
+
+        /** Coverage key of a fetch without a network filter. */
+        const val ALL_NETWORKS = "*"
+
+        const val DEFAULT_TTL_MILLIS = 3L * 24 * 60 * 60 * 1000
+
+        const val DEFAULT_PREFETCH_MARGIN_KM = 25.0
+    }
+}
+
+private fun ChargeSiteEntity.toDomain(): ChargeSite = ChargeSite(
+    id = id,
+    name = name,
+    operator = operator,
+    operatorId = operatorId,
+    position = LatLon(lat, lon),
+    connectors = connectors,
+    address = Address(street, postalCode, town).takeIf { !it.isEmpty },
+    sources = sources.ifEmpty { setOf(sourceId) },
+    liveStatusId = liveStatusId,
+    networkKey = networkKey,
+    adHocTariffs = adHocTariffs,
+)

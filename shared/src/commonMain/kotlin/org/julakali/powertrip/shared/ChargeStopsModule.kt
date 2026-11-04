@@ -1,0 +1,189 @@
+package org.julakali.powertrip.shared
+
+import org.julakali.powertrip.shared.core.CorridorPlanner
+import org.julakali.powertrip.shared.core.TripPlanner
+import org.julakali.powertrip.shared.data.BackendChargePointStatusSource
+import org.julakali.powertrip.shared.data.CachingChargePointStatusRepository
+import org.julakali.powertrip.shared.data.BackendChargeSiteSource
+import org.julakali.powertrip.shared.data.BackendDataSourceDirectory
+import org.julakali.powertrip.shared.data.BackendGeocoder
+import org.julakali.powertrip.shared.data.BackendNetworkListSource
+import org.julakali.powertrip.shared.data.BackendRouteSiteSource
+import org.julakali.powertrip.shared.data.CombinedSoCSource
+import org.julakali.powertrip.shared.data.ManualSoCSource
+import org.julakali.powertrip.shared.data.RoomNetworkRepository
+import org.julakali.powertrip.shared.data.RoomVehicleCatalogRepository
+import org.julakali.powertrip.shared.data.BackendVehicleCatalogSource
+import org.julakali.powertrip.shared.data.TiledSiteRepository
+import org.julakali.powertrip.shared.data.createHttpClient
+import org.julakali.powertrip.shared.data.pruneCache
+import org.julakali.powertrip.shared.db.ChargeSiteDatabase
+import org.julakali.powertrip.shared.db.createChargeSiteDatabase
+import org.julakali.powertrip.shared.domain.AppCoroutineDispatchers
+import org.julakali.powertrip.shared.domain.CorridorPlanning
+import org.julakali.powertrip.shared.domain.DataSourceDirectory
+import org.julakali.powertrip.shared.domain.Geocoder
+import org.julakali.powertrip.shared.domain.usecases.LoadDataSourcesInteractor
+import org.julakali.powertrip.shared.domain.LocationSource
+import org.julakali.powertrip.shared.domain.ChargePointStatusRepository
+import org.julakali.powertrip.shared.domain.NetworkRepository
+import org.julakali.powertrip.shared.domain.usecases.ChargeNowObserver
+import org.julakali.powertrip.shared.domain.usecases.ChargeStopsObserver
+import org.julakali.powertrip.shared.domain.usecases.DestinationSearchObserver
+import org.julakali.powertrip.shared.domain.usecases.MapChargersObserver
+import org.julakali.powertrip.shared.domain.usecases.PlanTripInteractor
+import org.julakali.powertrip.shared.domain.usecases.RefreshChargeNowInteractor
+import org.julakali.powertrip.shared.domain.usecases.RefreshChargeStopsInteractor
+import org.julakali.powertrip.shared.domain.usecases.LiveConnectorsObserver
+import org.julakali.powertrip.shared.domain.usecases.RefreshChargerAvailabilityInteractor
+import org.julakali.powertrip.shared.domain.usecases.RefreshLiveConnectorsInteractor
+import org.julakali.powertrip.shared.domain.usecases.RefreshNetworksInteractor
+import org.julakali.powertrip.shared.domain.usecases.RefreshVehicleCatalogInteractor
+import org.julakali.powertrip.shared.domain.usecases.RefreshMapChargersInteractor
+import org.julakali.powertrip.shared.domain.usecases.CommitTripInteractor
+import org.julakali.powertrip.shared.domain.usecases.EndTripInteractor
+import org.julakali.powertrip.shared.domain.usecases.RefreshTripSitesInteractor
+import org.julakali.powertrip.shared.domain.usecases.DismissPlannedTripInteractor
+import org.julakali.powertrip.shared.domain.usecases.ReplanCommittedTripInteractor
+import org.julakali.powertrip.shared.domain.usecases.ReplanWithArrivalSocInteractor
+import org.julakali.powertrip.shared.domain.usecases.RemoveVehicleInteractor
+import org.julakali.powertrip.shared.domain.usecases.EditVehicleInteractor
+import org.julakali.powertrip.shared.domain.usecases.ResetVehicleValueInteractor
+import org.julakali.powertrip.shared.domain.usecases.RestoreCatalogValuesInteractor
+import org.julakali.powertrip.shared.domain.usecases.SelectVehicleInteractor
+import org.julakali.powertrip.shared.domain.RouteSiteSource
+import org.julakali.powertrip.shared.domain.PreferencesRepository
+import org.julakali.powertrip.shared.domain.SiteLookup
+import org.julakali.powertrip.shared.domain.SiteRepository
+import org.julakali.powertrip.shared.domain.SoCSource
+import org.julakali.powertrip.shared.domain.TimeProvider
+import org.julakali.powertrip.shared.domain.TripPlanning
+import org.julakali.powertrip.shared.domain.TripRepository
+import org.julakali.powertrip.shared.domain.VehicleRepository
+import org.julakali.powertrip.shared.domain.VehicleCatalogRepository
+import org.julakali.powertrip.shared.domain.usecases.UpdateArrivalSocInteractor
+import org.julakali.powertrip.shared.domain.usecases.UpdateChargeFiltersInteractor
+import org.julakali.powertrip.shared.domain.usecases.UpdateManualSocInteractor
+import org.julakali.powertrip.shared.domain.usecases.SetChargeModeInteractor
+import org.julakali.powertrip.shared.domain.usecases.UpdateNetworksInteractor
+import io.ktor.client.HttpClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.SharingStarted
+import org.koin.core.module.Module
+import org.koin.core.module.dsl.onClose
+import org.koin.core.module.dsl.withOptions
+import org.koin.dsl.module
+import org.julakali.powertrip.shared.domain.usecases.StartAppInteractor
+import org.julakali.powertrip.shared.domain.usecases.VehiclePresetsObserver
+import org.julakali.powertrip.shared.domain.usecases.GarageObserver
+import org.julakali.powertrip.shared.domain.usecases.SelectableNetworksObserver
+import org.julakali.powertrip.shared.domain.SiteCache
+import org.koin.core.qualifier.named
+import org.koin.core.scope.Scope
+
+/**
+ * The data graph behind both features, declared once for both platforms.
+ *
+ * The platform modules supply [LocationSource] (the phone's),
+ * [org.julakali.powertrip.shared.domain.ReverseGeocoder],
+ * [org.julakali.powertrip.shared.db.DatabaseFactory], the settings
+ * repositories (`settingsModule`), [org.julakali.powertrip.shared.domain.TripStorage]
+ * and [BackendConfig].
+ * Everything here is one instance per process.
+ */
+fun chargeStopsModule(): Module = module {
+    single { AppCoroutineDispatchers(io = Dispatchers.IO, computation = Dispatchers.Default, main = Dispatchers.Main) }
+    single<CoroutineScope>(AppScope) {
+        CoroutineScope(SupervisorJob() + get<AppCoroutineDispatchers>().computation)
+    } withOptions { onClose { it?.cancel() } }
+    single<TimeProvider> { TimeProvider { currentTimeMillis() } }
+
+    single<HttpClient> { createHttpClient(backend = get()) } withOptions { onClose { it?.close() } }
+    single<ChargeSiteDatabase> { createChargeSiteDatabase(get(), get<AppCoroutineDispatchers>().io) }
+
+    single<SiteRepository> {
+        TiledSiteRepository(
+            source = BackendChargeSiteSource(get()),
+            database = get(),
+            time = get(),
+            scope = get(AppScope),
+            computation = get<AppCoroutineDispatchers>().computation,
+        )
+    }
+
+    single<Geocoder> { BackendGeocoder(get()) }
+
+    single<RouteSiteSource> { BackendRouteSiteSource(get()) }
+    single<TripPlanning> { TripPlanner(get()) }
+    single { TripRepository(get(), SiteLookup(get<SiteRepository>()::storedSites)) }
+    single<CorridorPlanning> { CorridorPlanner() }
+    single<ChargePointStatusRepository> { CachingChargePointStatusRepository(BackendChargePointStatusSource(get()), get()) }
+    single<DataSourceDirectory> { BackendDataSourceDirectory(get()) }
+    factory { LoadDataSourcesInteractor(get()) }
+    factory { MapChargersObserver(get(), get(), get(), get()) }
+    factory { RefreshMapChargersInteractor(get(), get()) }
+    factory { RefreshChargerAvailabilityInteractor(get(), get(), get(), get()) }
+    factory { LiveConnectorsObserver(get()) }
+    factory { RefreshLiveConnectorsInteractor(get()) }
+    factory { ChargeNowObserver(get(), get(), get(), get()) }
+    factory { RefreshChargeNowInteractor(get(), get(), get()) }
+    factory { DestinationSearchObserver(get(), get()) }
+    factory { PlanTripInteractor(get(), get(), get(), get(), get(), get(), get(), get()) }
+    factory { UpdateArrivalSocInteractor(get()) }
+    factory { ReplanWithArrivalSocInteractor(get(), get(), get()) }
+    factory { CommitTripInteractor(get(), get()) }
+    factory { EndTripInteractor(get()) }
+    factory { RefreshTripSitesInteractor(get(), get(), get()) }
+    factory { DismissPlannedTripInteractor(get()) }
+    factory { ReplanCommittedTripInteractor(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    factory { SelectVehicleInteractor(get()) }
+    factory { RemoveVehicleInteractor(get()) }
+    factory { UpdateManualSocInteractor(get()) }
+    factory { UpdateChargeFiltersInteractor(get()) }
+    factory { UpdateNetworksInteractor(get()) }
+    factory { SetChargeModeInteractor(get(), get(), get()) }
+    factory { ChargeStopsObserver(get(), get(), get(), get(), get(), get(), get()) }
+    factory { RefreshChargeStopsInteractor(get(), get()) }
+    factory { SelectableNetworksObserver(get(), get(), get()) }
+    factory { GarageObserver(get<VehicleRepository>(), get()) }
+    factory { VehiclePresetsObserver(get(), get<VehicleRepository>(), get()) }
+    single<NetworkRepository> { RoomNetworkRepository(BackendNetworkListSource(get()), get()) }
+    factory { RefreshNetworksInteractor(get()) }
+    single<VehicleCatalogRepository> { RoomVehicleCatalogRepository(BackendVehicleCatalogSource(get()), get()) }
+    factory { RefreshVehicleCatalogInteractor(get(), get<VehicleRepository>()) }
+    factory { RestoreCatalogValuesInteractor(get<VehicleRepository>(), get()) }
+    factory { EditVehicleInteractor(get<VehicleRepository>(), get()) }
+    factory { ResetVehicleValueInteractor(get<VehicleRepository>(), get()) }
+
+    single<SiteCache> {
+        SiteCache { keys -> pruneCache(get(), keys, get<TimeProvider>().nowMillis(), TiledSiteRepository.DEFAULT_TTL_MILLIS) }
+    }
+    factory { StartAppInteractor(get(), get(), get(), get(), get(), get()) }
+
+    // A feature per session, on the graph's shared singletons; the caller owns and closes it.
+    factory<ChargeStopsFeature>(SessionFeature) { (location: LocationSource, hardware: SoCSource?) ->
+        chargeStopsFeature(location, hardware, SharingStarted.Eagerly)
+    }
+    // The phone's feature. Never closed, so its location source runs only while a screen collects the fix.
+    single<ChargeStopsFeature> {
+        chargeStopsFeature(get(), hardware = null, SharingStarted.WhileSubscribed(LOCATION_STOP_TIMEOUT_MILLIS))
+    }
+}
+
+private fun Scope.chargeStopsFeature(location: LocationSource, hardware: SoCSource?, locationSharing: SharingStarted) =
+    ChargeStopsFeature(
+        locationSource = location,
+        socSource = CombinedSoCSource(manual = ManualSoCSource(get(), get()), hardware = hardware),
+        parentScope = get(AppScope),
+        locationSharing = locationSharing,
+    )
+
+// Long enough to bridge a rotation or the change from one screen to the next.
+private const val LOCATION_STOP_TIMEOUT_MILLIS = 5_000L
+
+/** A [ChargeStopsFeature] built for one session: `parametersOf(location, hardwareSoCSource)`. */
+val SessionFeature = named("session-feature")

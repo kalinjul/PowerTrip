@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>de</string>
+	</array>
+	<key>CFBundleDisplayName</key>
+	<string>PowerTrip</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+
+	<!-- Actually requested from M1 on: the corridor search (ARCHITECTURE.md 5.3)
+	     requires position and heading. Without this text, iOS rejects the
+	     request without even prompting. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>PowerTrip needs your location to show reachable charging stops in your direction of travel.</string>
+
+	<!-- The backend address and token do not belong in the repository.
+	     They come from the build settings CHARGEAHEAD_BASE_URL and
+	     CHARGEAHEAD_TOKEN, set in a non-checked-in .xcconfig
+	     (see iosApp/README.md). The app does not start without them. -->
+	<key>PowerTripBaseUrl</key>
+	<string>$(CHARGEAHEAD_BASE_URL)</string>
+	<key>PowerTripToken</key>
+	<string>$(CHARGEAHEAD_TOKEN)</string>
+
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>armv7</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- Two scene roles: phone UI (SwiftUI) and CarPlay template UI.
+	     See AppDelegate.swift, which distinguishes between the two
+	     configurations based on the role. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Phone Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>PowerTrip.PhoneSceneDelegate</string>
+				</dict>
+			</array>
+			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>CarPlay Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>PowerTrip.CarPlaySceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+</dict>
+</plist>

@@ -5,10 +5,10 @@ assistant; the phone app has the Android app's screens, built from SwiftUI parts
 [../AGENTS.md](../AGENTS.md)).
 
 ```
-ChargeAhead/
+PowerTrip/
 ├── AppDelegate.swift              Scene routing: phone vs. CarPlay; SharedEntry starts the graph at launch and creates features
 ├── Info.plist                     UIApplicationSceneManifest, permission texts
-├── ChargeAhead.entitlements       com.apple.developer.carplay-charging
+├── PowerTrip.entitlements       com.apple.developer.carplay-charging
 ├── Localized.swift                localized("key"), localizedPlural: text from shared's composeResources
 ├── Assets.xcassets                app icon and powertrip logo, converted from the Android drawables
 ├── {en,de}.lproj/InfoPlist.strings location permission text, the one native string
@@ -49,7 +49,7 @@ for the simulator SDK directly:
 ```bash
 cd iosApp
 xcodegen generate
-xcodebuild -project ChargeAhead.xcodeproj -target ChargeAhead \
+xcodebuild -project PowerTrip.xcodeproj -target PowerTrip \
   -configuration Debug -sdk iphonesimulator -arch arm64 \
   CODE_SIGNING_ALLOWED=NO \
   JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" build
@@ -66,7 +66,7 @@ silent with no error anywhere.
 
 ## Backend
 
-The app gets everything from the ChargeAhead backend and does not run
+The app gets everything from the PowerTrip backend and does not run
 without it. Address and token do not belong in the repository. They reach
 the code through the build settings `CHARGEAHEAD_BASE_URL` and
 `CHARGEAHEAD_TOKEN` into `Info.plist`, and from there via
@@ -89,7 +89,7 @@ builds, but the app stops at launch.
 1. **Apply for the CarPlay entitlement from Apple**, if not already done —
    without approval of `com.apple.developer.carplay-charging`, every
    build/signing attempt fails regardless of what's locally set in
-   `ChargeAhead.entitlements` (see ARCHITECTURE.md, section 1.4).
+   `PowerTrip.entitlements` (see ARCHITECTURE.md, section 1.4).
 2. **Build and embed the shared framework:**
    ```bash
    ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64   # simulator, debug

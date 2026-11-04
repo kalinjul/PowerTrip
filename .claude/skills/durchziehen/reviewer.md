@@ -139,7 +139,7 @@ find the code behind what's off.
   the pieces?
 - Nothing else moved: compare against the goldens in
   `ui-tests/src/screenshotTestDebug/reference/` (Android) and the committed
-  versions under `iosApp/ChargeAheadSnapshotTests/__Snapshots__/` (iOS,
+  versions under `iosApp/PowerTripSnapshotTests/__Snapshots__/` (iOS,
   `git show {BASE_SHA}:<path>`) for screens that already existed; a layout
   shift the brief didn't ask for is a finding.
 A visual finding names the screenshot, says what is off in plain words, and

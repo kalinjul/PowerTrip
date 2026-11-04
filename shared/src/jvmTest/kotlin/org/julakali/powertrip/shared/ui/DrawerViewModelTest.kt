@@ -1,0 +1,76 @@
+package org.julakali.powertrip.shared.ui
+
+import org.julakali.powertrip.shared.domain.ChargeFilters
+import org.julakali.powertrip.shared.domain.NetworkPreferences
+import org.julakali.powertrip.shared.domain.usecases.UpdateChargeFiltersInteractor
+import org.julakali.powertrip.shared.domain.usecases.UpdateNetworksInteractor
+import org.julakali.powertrip.shared.domain.usecases.SetChargeModeInteractor
+import org.julakali.powertrip.shared.domain.ChargeMode
+import org.julakali.powertrip.shared.settings.InMemoryPreferencesDataStore
+import org.julakali.powertrip.shared.settings.DataStorePreferencesRepository
+import org.julakali.powertrip.shared.testVehicleRepository
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class DrawerViewModelTest {
+
+    private val main = TestMain()
+
+    @BeforeTest
+    fun setUpMainDispatcher() = main.setUp()
+
+    @AfterTest
+    fun tearDownMainDispatcher() = main.tearDown()
+
+    @Test
+    fun `the count includes selected keys the network list does not know`() = runBlocking<Unit> {
+        val preferences = DataStorePreferencesRepository(InMemoryPreferencesDataStore())
+        // Off the backend's list, but it still filters, so it counts.
+        preferences.setNetworks(
+            NetworkPreferences(
+                onlyPreferred = true,
+                preferredOperators = setOf("enbw", "stadtwerke-kiel"),
+            ),
+        )
+        val state = viewModel(preferences).uiState.await { it.preferredNetworkCount > 0 }
+        assertEquals(2, state.preferredNetworkCount)
+    }
+
+    @Test
+    fun `the state carries the mode that is on`() = runBlocking<Unit> {
+        val preferences = DataStorePreferencesRepository(InMemoryPreferencesDataStore())
+        preferences.setNetworks(NetworkPreferences(onlyPreferred = false))
+
+        assertEquals(ChargeMode.BROWSE, viewModel(preferences).uiState.await { it.mode != ChargeMode.NORMAL }.mode)
+    }
+
+    @Test
+    fun `selecting a mode stores it, selecting normal takes it back`() = runBlocking<Unit> {
+        val preferences = DataStorePreferencesRepository(InMemoryPreferencesDataStore())
+        val vm = viewModel(preferences)
+
+        vm.onModeSelected(ChargeMode.AC)
+        assertEquals(ChargeMode.AC, vm.uiState.await { it.mode == ChargeMode.AC }.mode)
+
+        vm.onModeSelected(ChargeMode.NORMAL)
+        assertEquals(ChargeMode.NORMAL, vm.uiState.await { it.mode == ChargeMode.NORMAL }.mode)
+    }
+
+    private fun viewModel(preferences: DataStorePreferencesRepository) = main.track(
+        DrawerViewModel(
+            testVehicleRepository(),
+            preferences,
+            UpdateChargeFiltersInteractor(preferences),
+            SetChargeModeInteractor(preferences, UpdateChargeFiltersInteractor(preferences), UpdateNetworksInteractor(preferences)),
+        ),
+    )
+
+    private suspend fun <T> StateFlow<T>.await(matching: (T) -> Boolean): T =
+        withTimeout(5_000L) { first(matching) }
+}

@@ -22,7 +22,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IOS_DIR="$REPO_ROOT/iosApp"
 BUILD_DIR="$IOS_DIR/build"
-APP="$BUILD_DIR/Debug-iphonesimulator/ChargeAhead.app"
+APP="$BUILD_DIR/Debug-iphonesimulator/PowerTrip.app"
 BUNDLE_ID="org.julakali.chargeahead"
 STUDIO_JDK="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
@@ -79,7 +79,7 @@ generate() {
 
 build() {
   generate
-  xcodebuild -project "$IOS_DIR/ChargeAhead.xcodeproj" -target ChargeAhead \
+  xcodebuild -project "$IOS_DIR/PowerTrip.xcodeproj" -target PowerTrip \
     -configuration Debug -sdk iphonesimulator -arch arm64 \
     CODE_SIGNING_ALLOWED=NO SYMROOT="$BUILD_DIR" ${jdk[@]+"${jdk[@]}"} \
     build -quiet
@@ -114,7 +114,7 @@ case "${1:-run}" in
     rm -rf "$out"
     mkdir -p "$out/screenshots"
     TEST_RUNNER_SCREENSHOT_DIR="$out/screenshots" xcodebuild test \
-      -project "$IOS_DIR/ChargeAhead.xcodeproj" -scheme ChargeAhead \
+      -project "$IOS_DIR/PowerTrip.xcodeproj" -scheme PowerTrip \
       -destination "id=$id" -derivedDataPath "$out/derived" \
       -resultBundlePath "$out/result.xcresult" ${jdk[@]+"${jdk[@]}"} -quiet
     echo "screenshots in $out/screenshots"
@@ -137,7 +137,7 @@ case "${1:-run}" in
     ;;
   logs)
     id="$(udid)"
-    xcrun simctl spawn "$id" log stream --style compact --predicate 'process == "ChargeAhead"'
+    xcrun simctl spawn "$id" log stream --style compact --predicate 'process == "PowerTrip"'
     ;;
   location)
     [ $# -eq 3 ] || die "usage: $0 location <lat> <lon>"

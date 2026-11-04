@@ -1,0 +1,49 @@
+package org.julakali.powertrip.shared.data
+
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import org.julakali.powertrip.api.DataSourceDto
+import org.julakali.powertrip.api.DataSourcesResponse
+import org.julakali.powertrip.api.DatasetDto
+import org.julakali.powertrip.shared.domain.DataSource
+import org.julakali.powertrip.shared.domain.DataSourceDirectory
+import org.julakali.powertrip.shared.domain.Dataset
+import org.julakali.powertrip.shared.domain.DatasetKind
+import org.julakali.powertrip.shared.domain.License
+
+/** The sources the backend draws on; only it knows which are connected. */
+class BackendDataSourceDirectory(
+    private val httpClient: HttpClient,
+) : DataSourceDirectory {
+
+    override suspend fun dataSources(): List<DataSource> {
+        val response: DataSourcesResponse = httpClient.get(PATH) {
+        }.body()
+        return response.sources.map { it.toDomain() }
+    }
+
+    private companion object {
+        const val PATH = "v1/data-sources"
+    }
+}
+
+private fun DataSourceDto.toDomain() = DataSource(
+    id = id,
+    name = name,
+    url = url,
+    datasets = datasets.map { it.toDomain() },
+)
+
+private fun DatasetDto.toDomain() = Dataset(
+    kind = when (kind) {
+        "sites" -> DatasetKind.SITES
+        "status" -> DatasetKind.STATUS
+        "routing" -> DatasetKind.ROUTING
+        "places" -> DatasetKind.PLACES
+        "weather" -> DatasetKind.WEATHER
+        else -> DatasetKind.OTHER
+    },
+    url = url,
+    license = license?.let { License(it.name, it.url) },
+)

@@ -66,7 +66,7 @@ Rules of the house while building:
   a screen over the map gets a plain backdrop, that's fine.
   - Android: a `@PreviewTest` in
     `ui-tests/src/screenshotTest/.../<Feature>Previews.kt`.
-  - iOS: a test in `iosApp/ChargeAheadSnapshotTests/<Feature>SnapshotTests.swift`
+  - iOS: a test in `iosApp/PowerTripSnapshotTests/<Feature>SnapshotTests.swift`
     calling `assertLightAndDark(...)`. A SwiftUI screen splits into a view
     that holds the ViewModel and a `<Screen>Content` that takes the state and
     action closures; the test feeds the content from `Fixtures.swift`.
@@ -108,7 +108,7 @@ Never commit these renders as goldens; the docker pass before the PR does that.
 pinned simulator and validates the result; `git status` then shows which
 goldens changed, under
 
-    iosApp/ChargeAheadSnapshotTests/__Snapshots__/<Feature>SnapshotTests/<test>.<name>-light.png
+    iosApp/PowerTripSnapshotTests/__Snapshots__/<Feature>SnapshotTests/<test>.<name>-light.png
 
 A golden that changed although the task didn't touch its screen is a
 regression, not noise: the render is deterministic on the pinned simulator.

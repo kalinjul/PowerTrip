@@ -24,7 +24,7 @@ phase calls Gradle), so a change in `shared/` shows up without anything else.
 ## Tests and goldens
 
 Not through this script: `tools/check.sh ios` runs the iOS gates on a
-simulator of their own ("ChargeAhead Checks", iOS 26.2), so the one above
+simulator of their own ("PowerTrip Checks", iOS 26.2), so the one above
 keeps its state. `--record` re-renders the snapshot goldens.
 
 ## Before the first run

@@ -162,7 +162,7 @@ ios_gates() {
   # A simulator still booting refuses to launch the test runner ("failed preflight checks").
   xcrun simctl bootstatus "$udid" -b >/dev/null
   (cd "$IOS_DIR" && xcodegen generate --quiet)
-  local xcode=(-project "$IOS_DIR/ChargeAhead.xcodeproj" -scheme ChargeAhead
+  local xcode=(-project "$IOS_DIR/PowerTrip.xcodeproj" -scheme PowerTrip
     -destination "id=$udid" -derivedDataPath "$CHECK_DIR/derived" -quiet)
   local jdk=()
   if [ -n "${JAVA_HOME:-}" ]; then jdk=("JAVA_HOME=$JAVA_HOME"); fi
@@ -173,17 +173,17 @@ ios_gates() {
   if $record; then
     step "iOS: re-record goldens"
     # Renamed or deleted tests would otherwise leave their goldens behind.
-    rm -rf "$IOS_DIR/ChargeAheadSnapshotTests/__Snapshots__"
+    rm -rf "$IOS_DIR/PowerTripSnapshotTests/__Snapshots__"
     # Recording fails every test on purpose ("record mode is on"); the validate run below is the verdict.
     TEST_RUNNER_SNAPSHOT_TESTING_RECORD=all \
-      xcodebuild "${run[@]}" -only-testing:ChargeAheadSnapshotTests || true
+      xcodebuild "${run[@]}" -only-testing:PowerTripSnapshotTests || true
   fi
   if $goldens; then
     step "iOS: goldens on $CHECK_SIMULATOR (iOS $IOS_RUNTIME)"
     rm -rf "$CHECK_DIR/snapshot-failures"
     TEST_RUNNER_SNAPSHOT_TESTING_RECORD=never \
       TEST_RUNNER_SNAPSHOT_ARTIFACTS="$CHECK_DIR/snapshot-failures" \
-      xcodebuild "${run[@]}" -only-testing:ChargeAheadSnapshotTests \
+      xcodebuild "${run[@]}" -only-testing:PowerTripSnapshotTests \
       -resultBundlePath "$CHECK_DIR/snapshots-$(date +%s).xcresult" \
       || die "snapshot tests failed; differing renders, if any, are in $CHECK_DIR/snapshot-failures"
   fi
@@ -196,7 +196,7 @@ ios_gates() {
     # Planning starts from the current position; Hamburg, like the Android previews.
     xcrun simctl location "$udid" set 53.5511,9.9937
     TEST_RUNNER_SCREENSHOT_DIR="$CHECK_DIR/uitest-screenshots" \
-      xcodebuild "${run[@]}" -only-testing:ChargeAheadUITests
+      xcodebuild "${run[@]}" -only-testing:PowerTripUITests
   else
     echo
     echo "iOS UI tests skipped: they need the backend from iosApp/Secrets.xcconfig, which CI does not have."

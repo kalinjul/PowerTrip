@@ -1,0 +1,152 @@
+package org.julakali.powertrip.shared.ui
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.julakali.powertrip.shared.ChargeStopsFeature
+import org.julakali.powertrip.shared.domain.BoundingBox
+import org.julakali.powertrip.shared.domain.ChargeSite
+import org.julakali.powertrip.shared.domain.ChargePointStatusRepository
+import org.julakali.powertrip.shared.domain.ChargePointStatus
+import org.julakali.powertrip.shared.domain.Connector
+import org.julakali.powertrip.shared.domain.ConnectorType
+import org.julakali.powertrip.shared.domain.Fix
+import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.LocationSource
+import org.julakali.powertrip.shared.domain.MapFilter
+import org.julakali.powertrip.shared.domain.SearchArea
+import org.julakali.powertrip.shared.domain.SiteRepository
+import org.julakali.powertrip.shared.domain.usecases.ChargeNowObserver
+import org.julakali.powertrip.shared.domain.usecases.RefreshChargeNowInteractor
+import org.julakali.powertrip.shared.settings.DataStorePreferencesRepository
+import org.julakali.powertrip.shared.settings.InMemoryPreferencesDataStore
+import org.julakali.powertrip.shared.testDispatchers
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class ChargeNowViewModelTest {
+
+    private val main = TestMain()
+
+    @BeforeTest
+    fun setUpMainDispatcher() = main.setUp()
+
+    @AfterTest
+    fun tearDownMainDispatcher() = main.tearDown()
+
+    private val here = LatLon(48.0, 11.0)
+    private val preferences = DataStorePreferencesRepository(InMemoryPreferencesDataStore())
+    private val fixes = MutableSharedFlow<Fix>(replay = 1)
+    private val feature = ChargeStopsFeature(
+        locationSource = object : LocationSource {
+            override val updates: Flow<Fix> = fixes
+            override suspend fun currentFix(): Fix? = fixes.replayCache.firstOrNull()
+        },
+        parentScope = CoroutineScope(Dispatchers.Unconfined),
+    ).apply { start() }
+    private fun site(id: String, northKm: Double) = ChargeSite(
+        id = id,
+        name = id,
+        operator = "Ionity",
+        position = LatLon(here.lat + northKm / 111.0, here.lon),
+        connectors = listOf(Connector(ConnectorType.CCS2, 300.0, 4)),
+    )
+    private val nearby = site("near", 1.0)
+    private val further = site("further", 3.0)
+    private val store = MutableStateFlow<List<ChargeSite>>(emptyList())
+    private val repository = object : SiteRepository {
+        override suspend fun covers(area: SearchArea, networkKeys: Set<String>): Boolean = true
+        override suspend fun storedSites(ids: Set<String>): Map<String, ChargeSite> = emptyMap()
+        override suspend fun load(area: SearchArea, networkKeys: Set<String>) {
+            store.update { listOf(nearby, further) }
+        }
+
+        override fun storedSitesIn(box: BoundingBox, filter: MapFilter): Flow<List<ChargeSite>> = store
+
+        override fun storedSitesIn(area: SearchArea): Flow<List<ChargeSite>> = store
+
+        override suspend fun invalidate() = Unit
+    }
+
+
+    private val statusStore = MutableStateFlow<Map<String, List<ChargePointStatus>>>(emptyMap())
+    private val refreshedIds = mutableListOf<String>()
+    private val statusRepository = object : ChargePointStatusRepository {
+        override val statuses: Flow<Map<String, List<ChargePointStatus>>> = statusStore
+        override suspend fun refresh(ids: Collection<String>) { refreshedIds += ids }
+    }
+
+    private fun viewModel() = main.track(
+        ChargeNowViewModel(
+            feature,
+            ChargeNowObserver(repository, statusRepository, preferences, testDispatchers),
+            RefreshChargeNowInteractor(repository, statusRepository, preferences),
+        ),
+    )
+
+    private suspend fun ChargeNowViewModel.awaitOpen(condition: (ChargeNowSheetUiState.Open) -> Boolean) =
+        withTimeout(5_000) { uiState.first { it is ChargeNowSheetUiState.Open && condition(it) } } as ChargeNowSheetUiState.Open
+
+    private val ChargeNowSheetUiState.Open.result get() = (content as? ChargeNowUiState.Ready)?.result
+
+    @Test
+    fun `the sheet starts closed`() {
+        assertEquals(ChargeNowSheetUiState.Closed, viewModel().uiState.value)
+    }
+
+    @Test
+    fun `opening the sheet ranks what is nearby from the current fix`() = runBlocking<Unit> {
+        fixes.emit(Fix(here, null, null, 0L))
+        val viewModel = viewModel()
+
+        viewModel.onSheetOpened()
+
+        val open = viewModel.awaitOpen { it.result?.isEmpty == false }
+        assertEquals(listOf("near", "further"), open.result?.candidates?.map { it.site.id })
+    }
+
+    @Test
+    fun `the nearest candidate is selected until the driver picks another`() = runBlocking<Unit> {
+        fixes.emit(Fix(here, null, null, 0L))
+        val viewModel = viewModel()
+        viewModel.onSheetOpened()
+        assertEquals("near", viewModel.awaitOpen { it.selected != null }.selected?.site?.id)
+
+        viewModel.onCandidateSelected("further")
+
+        assertEquals(2, viewModel.awaitOpen { it.selected?.site?.id == "further" }.selectedRank)
+    }
+
+    @Test
+    fun `closing the sheet closes it, and reopening starts on the nearest again`() = runBlocking<Unit> {
+        fixes.emit(Fix(here, null, null, 0L))
+        val viewModel = viewModel()
+        viewModel.onSheetOpened()
+        viewModel.onCandidateSelected("further")
+
+        viewModel.onSheetClosed()
+        withTimeout(5_000) { viewModel.uiState.first { it == ChargeNowSheetUiState.Closed } }
+
+        viewModel.onSheetOpened()
+        viewModel.awaitOpen { it.selected?.site?.id == "near" }
+    }
+
+    @Test
+    fun `without a fix the open sheet has no position and nothing selected`() = runBlocking<Unit> {
+        val viewModel = viewModel()
+
+        viewModel.onSheetOpened()
+
+        val open = viewModel.awaitOpen { true }
+        assertEquals(ChargeNowUiState.NoPosition, open.content)
+        assertEquals(null, open.selected)
+    }
+}

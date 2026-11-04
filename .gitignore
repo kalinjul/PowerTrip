@@ -11,7 +11,7 @@ local.properties
 xcuserdata/
 *.xcodeproj/project.xcworkspace/
 *.xcodeproj/xcuserdata/
-iosApp/ChargeAhead.xcodeproj/
+iosApp/*.xcodeproj/
 iosApp/build/
 .build/
 secrets.properties

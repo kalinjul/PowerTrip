@@ -17,7 +17,7 @@
 # target (iosArm64 vs. iosSimulatorArm64) can only be verified with an
 # actual Mac toolchain run (see ARCHITECTURE.md, open point 1).
 
-name: ChargeAhead
+name: PowerTrip
 
 options:
   bundleIdPrefix: org.julakali
@@ -46,25 +46,25 @@ configFiles:
   Release: Secrets.xcconfig
 
 targets:
-  ChargeAhead:
+  PowerTrip:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - path: ChargeAhead
+      - path: PowerTrip
     # No `info:` block: XcodeGen would REGENERATE the plist and silently
     # drop the hand-maintained keys (CarPlay scene manifest). The existing
     # file is used as-is instead.
     entitlements:
-      path: ChargeAhead/ChargeAhead.entitlements
+      path: PowerTrip/PowerTrip.entitlements
       properties:
         com.apple.developer.carplay-charging: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.julakali.chargeahead
-        PRODUCT_NAME: ChargeAhead
+        PRODUCT_NAME: PowerTrip
         GENERATE_INFOPLIST_FILE: false
-        INFOPLIST_FILE: ChargeAhead/Info.plist
+        INFOPLIST_FILE: PowerTrip/Info.plist
         INFOPLIST_KEY_UILaunchScreen_Generation: false # UILaunchScreen is already in Info.plist
         # Confirmed by the first Mac build (2026-09-07): the embed task writes
         # the framework to shared/build/xcode-frameworks/<Configuration>/<sdk>.
@@ -86,30 +86,30 @@ targets:
         basedOnDependencyAnalysis: false
 
   # Taps through the app in the simulator: tools/ios-sim.sh uitest.
-  ChargeAheadUITests:
+  PowerTripUITests:
     type: bundle.ui-testing
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - path: ChargeAheadUITests
+      - path: PowerTripUITests
     dependencies:
-      - target: ChargeAhead
+      - target: PowerTrip
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.julakali.chargeahead.uitests
         GENERATE_INFOPLIST_FILE: true
 
   # Screens and markers against their goldens: tools/check.sh ios.
-  ChargeAheadSnapshotTests:
+  PowerTripSnapshotTests:
     type: bundle.unit-test
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - path: ChargeAheadSnapshotTests
+      - path: PowerTripSnapshotTests
         excludes:
           - "**/__Snapshots__/**"
     dependencies:
-      - target: ChargeAhead
+      - target: PowerTrip
       - package: SnapshotTesting
     settings:
       base:
@@ -120,14 +120,14 @@ targets:
           - "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
 
 schemes:
-  ChargeAhead:
+  PowerTrip:
     build:
       targets:
-        ChargeAhead: all
-        ChargeAheadUITests: [test]
-        ChargeAheadSnapshotTests: [test]
+        PowerTrip: all
+        PowerTripUITests: [test]
+        PowerTripSnapshotTests: [test]
     test:
       targets:
-        - ChargeAheadUITests
-        - ChargeAheadSnapshotTests
+        - PowerTripUITests
+        - PowerTripSnapshotTests
 

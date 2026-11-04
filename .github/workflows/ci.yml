@@ -24,7 +24,7 @@ concurrency:
 permissions:
   contents: read
 
-# Read by settings.gradle.kts to resolve org.julakali.chargeahead:api-model.
+# Read by settings.gradle.kts to resolve org.julakali.powertrip:api-model.
 env:
   CHARGEAHEAD_MAVEN_USER: ${{ secrets.CHARGEAHEAD_MAVEN_USER }}
   CHARGEAHEAD_MAVEN_PASSWORD: ${{ secrets.CHARGEAHEAD_MAVEN_PASSWORD }}
@@ -97,7 +97,7 @@ jobs:
         # sees secrets, so this is where that run stops, legibly.
         run: |
           if [ -z "${CHARGEAHEAD_MAVEN_USER:-}" ] || [ -z "${CHARGEAHEAD_MAVEN_PASSWORD:-}" ]; then
-            echo "::error title=No Maven credentials::org.julakali.chargeahead:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
+            echo "::error title=No Maven credentials::org.julakali.powertrip:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
             exit 1
           fi
 
@@ -106,7 +106,7 @@ jobs:
 
       - name: Shared tests (JVM target)
         # The live contract tests against the backend stay off (they only run
-        # with CHARGEAHEAD_LIVE=1): a test that goes red because a server
+        # with POWERTRIP_LIVE=1): a test that goes red because a server
         # hiccups says nothing about this repository. AGENTS.md, "Tests".
         run: ./gradlew :shared:jvmTest
 
@@ -162,7 +162,7 @@ jobs:
         # sees secrets, so this is where that run stops, legibly.
         run: |
           if [ -z "${CHARGEAHEAD_MAVEN_USER:-}" ] || [ -z "${CHARGEAHEAD_MAVEN_PASSWORD:-}" ]; then
-            echo "::error title=No Maven credentials::org.julakali.chargeahead:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
+            echo "::error title=No Maven credentials::org.julakali.powertrip:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
             exit 1
           fi
 
@@ -227,7 +227,7 @@ jobs:
       - name: Check the Maven credentials
         run: |
           if [ -z "${CHARGEAHEAD_MAVEN_USER:-}" ] || [ -z "${CHARGEAHEAD_MAVEN_PASSWORD:-}" ]; then
-            echo "::error title=No Maven credentials::org.julakali.chargeahead:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
+            echo "::error title=No Maven credentials::org.julakali.powertrip:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
             exit 1
           fi
 

@@ -11,8 +11,8 @@ analysis that led here is at the bottom.
 | Behaviour tests | `ui-tests/src/test` | JVM (Robolectric) | Do the phone screens show the right state and fire the right callbacks? |
 | PhoneApp flow tests | `ui-tests/src/test/.../phoneapp` | JVM (Robolectric) | Does the whole phone app hold together: search → plan → sheet, X, back order, layout toggle, replan? |
 | Screenshot tests | `ui-tests/src/screenshotTest` | JVM (Layoutlib) | Do the components still look like the approved picture? |
-| iOS snapshot tests | `iosApp/ChargeAheadSnapshotTests` | iOS simulator, pinned | Do the iOS screens and markers still look like the approved picture? |
-| iOS UI test | `iosApp/ChargeAheadUITests` | iOS simulator, with the backend | Does adding and picking a car work in the real app? |
+| iOS snapshot tests | `iosApp/PowerTripSnapshotTests` | iOS simulator, pinned | Do the iOS screens and markers still look like the approved picture? |
+| iOS UI test | `iosApp/PowerTripUITests` | iOS simulator, with the backend | Does adding and picking a car work in the real app? |
 | Device | by hand | phone / DHU / iOS simulator | Map, live data, Android Auto, feel |
 
 Nothing in the test modules talks to a backend, the geocoder, Google Maps
@@ -47,10 +47,10 @@ The two gradle screenshot tasks also run natively, but only the container
 render counts: layoutlib anti-aliases differently on macOS and Linux, and
 a golden recorded on a Mac fails on CI (and the other way round). The
 script runs them on `linux/amd64` with the JDK CI uses, the host SDK
-mounted read-only and its own Gradle home under `~/.chargeahead-linux`.
+mounted read-only and its own Gradle home under `~/.powertrip-linux`.
 The first run pulls everything and takes a few minutes; later ones are
 quicker. It runs with `docker` or rootless `podman`, whichever is
-installed (`CHARGEAHEAD_CONTAINER_ENGINE` picks one when both are).
+installed (`POWERTRIP_CONTAINER_ENGINE` picks one when both are).
 
 Goldens live in `ui-tests/src/screenshotTestDebug/reference/`, one PNG per
 `@PreviewTest` function. The validate task writes an HTML report with
@@ -90,7 +90,7 @@ blank. German, like the Android goldens.
 Rendering differs between Xcode and simulator versions the way layoutlib
 differs between macOS and Linux, so both are pinned in
 `tools/ios-toolchain.env` (Xcode 26.3, iOS 26.2, iPhone 17 Pro), and
-`check.sh` refuses others. It runs on its own simulator, "ChargeAhead
+`check.sh` refuses others. It runs on its own simulator, "PowerTrip
 Checks", created on first use, so the one you work with is never touched.
 Tolerance: 0.1 % of pixels may differ beyond a perceptual 2 %.
 
@@ -110,12 +110,12 @@ When a test fails, the differing renders are in
 
 - Behaviour: `@RunWith(RobolectricTestRunner::class)`,
   `createAndroidComposeRule<ComponentActivity>()`, content wrapped in
-  `ChargeAheadTheme`, strings via `compose.string(Res.string.x)` so the
+  `PowerTripTheme`, strings via `compose.string(Res.string.x)` so the
   German copy is matched, not retyped (`robolectric.properties` pins
   `de-rDE`). Match by text or content
   description; a `testTag` is the last resort.
 - Screenshot: a public top-level `@PreviewTest @Preview(showBackground = true)`
-  composable in `ui-tests/src/screenshotTest`, wrapped in `ChargeAheadTheme`,
+  composable in `ui-tests/src/screenshotTest`, wrapped in `PowerTripTheme`,
   fed from `Fixtures.kt`. Trip rows need
   `CompositionLocalProvider(LocalNow provides { LocalTime.of(14, 30) })`.
   Renaming a preview function orphans its golden; re-record.

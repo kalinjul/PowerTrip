@@ -1,0 +1,285 @@
+package org.julakali.powertrip.shared.domain.usecases
+
+import kotlinx.coroutines.flow.flowOf
+
+import org.julakali.powertrip.shared.testDispatchers
+import org.julakali.powertrip.shared.domain.BoundingBox
+import org.julakali.powertrip.shared.domain.ChargeFilters
+import org.julakali.powertrip.shared.domain.ChargePointState
+import org.julakali.powertrip.shared.domain.ChargePointStatus
+import org.julakali.powertrip.shared.domain.ChargePointStatusRepository
+import org.julakali.powertrip.shared.domain.ChargeSite
+import org.julakali.powertrip.shared.domain.Connector
+import org.julakali.powertrip.shared.domain.ConnectorType
+import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.MAX_MAP_CHARGERS
+import org.julakali.powertrip.shared.domain.MapCharger
+import org.julakali.powertrip.shared.domain.MapFilter
+import org.julakali.powertrip.shared.domain.NetworkPreferences
+import org.julakali.powertrip.shared.domain.SearchArea
+import org.julakali.powertrip.shared.domain.SiteAvailability
+import org.julakali.powertrip.shared.domain.SiteRepository
+import org.julakali.powertrip.shared.settings.InMemoryPreferencesDataStore
+import org.julakali.powertrip.shared.settings.DataStorePreferencesRepository
+import org.julakali.powertrip.shared.domain.PreferencesRepository
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+
+class ObserveMapChargersTest {
+
+    private val viewport = BoundingBox(south = 51.0, west = 6.5, north = 51.4, east = 7.0)
+
+    private val preferences = DataStorePreferencesRepository(InMemoryPreferencesDataStore())
+    private val fetchedAreas = mutableListOf<SearchArea>()
+    private val storedBoxes = mutableListOf<BoundingBox>()
+    private val storedFilters = mutableListOf<MapFilter>()
+    private lateinit var repository: SiteRepository
+    private val statusStore = MutableStateFlow<Map<String, List<ChargePointStatus>>>(emptyMap())
+    private val refreshedIds = mutableListOf<Collection<String>>()
+    private val statusRepository = object : ChargePointStatusRepository {
+        override val statuses = statusStore
+
+        override suspend fun refresh(ids: Collection<String>) {
+            refreshedIds += ids
+        }
+    }
+
+    private fun site(
+        id: String,
+        operator: String,
+        powerKw: Double,
+        type: ConnectorType = ConnectorType.CCS2,
+        liveStatusId: String? = null,
+    ) = ChargeSite(
+        id = "demo:$id",
+        name = id,
+        operator = operator,
+        position = LatLon(51.2, 6.7),
+        connectors = listOf(Connector(type, powerKw, 2)),
+        liveStatusId = liveStatusId,
+    )
+
+    /** A store holding [stored], which leaves filtering to the real store; a fetch adds [fetched] to it. */
+    private fun observer(
+        stored: List<ChargeSite>,
+        fetched: List<ChargeSite> = emptyList(),
+        configure: suspend PreferencesRepository.() -> Unit = {},
+    ): MapChargersObserver {
+        runBlocking { preferences.configure() }
+        val store = MutableStateFlow(stored)
+        repository = object : SiteRepository {
+            override suspend fun covers(area: SearchArea, networkKeys: Set<String>): Boolean = true
+            override suspend fun storedSites(ids: Set<String>): Map<String, ChargeSite> = emptyMap()
+            override fun storedSitesIn(area: SearchArea): Flow<List<ChargeSite>> = flowOf(emptyList())
+            override suspend fun invalidate() {}
+            override suspend fun load(area: SearchArea, networkKeys: Set<String>) {
+                fetchedAreas += area
+                store.update { it + fetched }
+            }
+
+            override fun storedSitesIn(box: BoundingBox, filter: MapFilter): Flow<List<ChargeSite>> {
+                storedBoxes += box
+                storedFilters += filter
+                return store
+            }
+        }
+        return MapChargersObserver(repository, statusRepository, preferences, testDispatchers).also { it(MapChargersObserver.Params(viewport)) }
+    }
+
+    private suspend fun MapChargersObserver.await(matching: (List<MapCharger>) -> Boolean = { true }): List<MapCharger> =
+        withTimeout(5_000) { flow.first(matching) }
+
+    @Test
+    fun `the store is asked with the driver's filter`() = runBlocking<Unit> {
+        val observe = observer(listOf(site("fastned", "Fastned", 300.0))) {
+            setChargeFilters(ChargeFilters(minPowerKw = 100.0))
+            setNetworks(NetworkPreferences(onlyPreferred = true, preferredOperators = setOf("fastned")))
+        }
+
+        val result = observe.await()
+
+        val expected = MapFilter(
+            networks = NetworkPreferences(onlyPreferred = true, preferredOperators = setOf("fastned")),
+            minPowerKw = 100.0,
+            slowMode = false,
+        )
+        assertEquals(expected, storedFilters.single())
+        assertEquals(300.0, result.single().maxPowerKw)
+    }
+
+    @Test
+    fun `a filter change asks the store again`() = runBlocking<Unit> {
+        val observe = observer(listOf(site("hpc", "Ionity", 350.0)))
+        // The stored sites don't change, so the result doesn't either; watch the store instead.
+        val collecting = launch { observe.flow.collect {} }
+        withTimeout(5_000) { while (storedFilters.isEmpty()) delay(10) }
+
+        preferences.setChargeFilters(ChargeFilters(minPowerKw = 50.0))
+
+        withTimeout(5_000) { while (storedFilters.size < 2) delay(10) }
+        collecting.cancel()
+        assertEquals(listOf(ChargeFilters().minPowerKw, 50.0), storedFilters.map { it.minPowerKw })
+    }
+
+    @Test
+    fun `in slow mode a charger shows its strongest connector of any type`() = runBlocking<Unit> {
+        val wallbox = site("wallbox", "Stadtwerke", 22.0, ConnectorType.TYPE2)
+        val observe = observer(listOf(wallbox)) { setChargeFilters(ChargeFilters(slowMode = true)) }
+
+        assertEquals(listOf(MapCharger(wallbox, 22.0)), observe.await())
+    }
+
+    @Test
+    fun `outside slow mode a site without a DC connector is not a map charger`() = runBlocking<Unit> {
+        val observe = observer(listOf(site("wallbox", "Stadtwerke", 22.0, ConnectorType.TYPE2)))
+
+        assertTrue(observe.await().isEmpty())
+    }
+
+    @Test
+    fun `without a viewport there are no chargers and no fetch`() = runBlocking<Unit> {
+        val observe = observer(listOf(site("hpc", "Ionity", 350.0)))
+        observe(MapChargersObserver.Params(viewport = null))
+
+        assertTrue(observe.await { it.isEmpty() }.isEmpty())
+        assertTrue(fetchedAreas.isEmpty())
+    }
+
+    @Test
+    fun `the cap keeps the nearest sites and drops the far ones`() = runBlocking<Unit> {
+        // 350 sites marching away from the viewport centre; only the nearest fit.
+        val centreLat = (viewport.south + viewport.north) / 2.0
+        val centreLon = (viewport.west + viewport.east) / 2.0
+        val many = (1..350).map { i ->
+            ChargeSite(
+                id = "demo:s$i",
+                name = "s$i",
+                operator = "EnBW",
+                position = LatLon(centreLat + i * 0.001, centreLon),
+                connectors = listOf(Connector(ConnectorType.CCS2, 150.0, 2)),
+            )
+        }
+        val observe = observer(many) { setChargeFilters(ChargeFilters(minPowerKw = 50.0)) }
+
+        val chargers = observe.await()
+        assertEquals(MAX_MAP_CHARGERS, chargers.size)
+        assertEquals(
+            (1..MAX_MAP_CHARGERS).map { "demo:s$it" },
+            chargers.map { it.site.id },
+            "the nearest sites survive, the far ones are dropped",
+        )
+    }
+
+    @Test
+    fun `site outside the viewport but inside the 2-screen pad is included`() = runBlocking<Unit> {
+        // viewport: south=51.0, north=51.4 — height 0.4°, padLat = 0.8°
+        // padded north = 52.2; site at 51.5 is outside viewport but inside pad
+        val outsideSite = ChargeSite(
+            id = "demo:outside",
+            name = "outside",
+            operator = "EnBW",
+            position = LatLon(51.5, 6.7),
+            connectors = listOf(Connector(ConnectorType.CCS2, 150.0, 2)),
+        )
+        val observe = observer(listOf(outsideSite)) { setChargeFilters(ChargeFilters(minPowerKw = 50.0)) }
+
+        assertNotNull(observe.await().find { it.site.id == "demo:outside" }, "Site in the pad must appear on the map")
+    }
+
+    @Test
+    fun `sites a refresh stores show up on the map`() = runBlocking<Unit> {
+        val observe = observer(stored = emptyList(), fetched = listOf(site("new", "Ionity", 350.0)))
+        observe.await()
+
+        RefreshMapChargersInteractor(repository, preferences)(RefreshMapChargersInteractor.Params(viewport)).getOrThrow()
+
+        assertEquals(listOf("demo:new"), observe.await { it.isNotEmpty() }.map { it.site.id })
+    }
+
+    @Test
+    fun `the stored read gets the padded box and nothing is fetched`() = runBlocking<Unit> {
+        val observe = observer(stored = emptyList())
+        observe.await()
+
+        assertTrue(fetchedAreas.isEmpty())
+        val padded = storedBoxes.first()
+        assertTrue(padded.south < viewport.south, "padded box must extend south")
+        assertTrue(padded.north > viewport.north, "padded box must extend north")
+        assertTrue(padded.west < viewport.west, "padded box must extend west")
+        assertTrue(padded.east > viewport.east, "padded box must extend east")
+    }
+
+    @Test
+    fun `a charger comes with the status stored for it`() = runBlocking<Unit> {
+        statusStore.value = mapOf("live-hpc" to listOf(ChargePointStatus(ChargePointState.AVAILABLE)))
+        val observe = observer(listOf(site("hpc", "Ionity", 350.0, liveStatusId = "live-hpc"), site("other", "EnBW", 350.0)))
+
+        val chargers = observe.await().associateBy { it.site.id }
+
+        assertEquals(SiteAvailability.Live(free = 1, total = 1), chargers.getValue("demo:hpc").availability)
+        assertNull(chargers.getValue("demo:other").availability)
+    }
+
+    @Test
+    fun `the availability counts only live points from the minimum power`() = runBlocking<Unit> {
+        fun point(state: ChargePointState, kw: Double) = ChargePointStatus(state, kw, listOf(ConnectorType.CCS2))
+        statusStore.value = mapOf(
+            "live-mixed" to listOf(
+                point(ChargePointState.AVAILABLE, 150.0),
+                point(ChargePointState.AVAILABLE, 150.0),
+                point(ChargePointState.AVAILABLE, 300.0),
+                point(ChargePointState.AVAILABLE, 300.0),
+            ),
+            "live-weak" to listOf(point(ChargePointState.AVAILABLE, 150.0)),
+        )
+        val observe = observer(
+            listOf(
+                site("mixed", "Ionity", 300.0, liveStatusId = "live-mixed"),
+                site("weak", "EnBW", 300.0, liveStatusId = "live-weak"),
+            ),
+        ) { setChargeFilters(ChargeFilters(minPowerKw = 300.0)) }
+
+        val chargers = observe.await().associateBy { it.site.id }
+
+        assertEquals(SiteAvailability.Live(free = 2, total = 2), chargers.getValue("demo:mixed").availability)
+        // The site data says 300 kW, the live data doesn't: shown, but without a count.
+        assertNull(chargers.getValue("demo:weak").availability)
+    }
+
+    @Test
+    fun `statuses a refresh stores show up on the map`() = runBlocking<Unit> {
+        val observe = observer(listOf(site("hpc", "Ionity", 350.0, liveStatusId = "live-hpc")))
+        observe.await()
+
+        statusStore.value = mapOf("live-hpc" to listOf(ChargePointStatus(ChargePointState.OUT_OF_ORDER)))
+
+        val charger = observe.await { result -> result.any { it.availability != null } }.single()
+        assertEquals(SiteAvailability.OutOfOrder, charger.availability)
+    }
+
+    @Test
+    fun `the availability refresh asks for the chargers the map shows`() = runBlocking<Unit> {
+        observer(
+            listOf(
+                site("hpc", "Ionity", 350.0, liveStatusId = "live-hpc"),
+                site("unknown", "EnBW", 350.0),
+                site("wallbox", "Stadtwerke", 22.0, ConnectorType.TYPE2, liveStatusId = "live-wallbox"),
+            ),
+        )
+
+        RefreshChargerAvailabilityInteractor(repository, statusRepository, preferences, testDispatchers)(RefreshChargerAvailabilityInteractor.Params(viewport)).getOrThrow()
+
+        assertEquals(listOf(listOf("live-hpc")), refreshedIds.map { it.toList() })
+    }
+}

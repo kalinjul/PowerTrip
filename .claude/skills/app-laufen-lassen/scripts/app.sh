@@ -10,11 +10,11 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 # The application id is not the Kotlin package: the code lives under
-# org.julakali.chargeahead.android, the installed app is org.julakali.chargeahead.
+# org.julakali.powertrip.android, the installed app is org.julakali.powertrip.
 # So the activity has to be named fully qualified — the "$PKG/.Foo" shorthand
 # resolves against the application id and silently misses.
 PKG=org.julakali.chargeahead
-ACTIVITY="$PKG/org.julakali.chargeahead.android.phone.MainActivity"
+ACTIVITY="$PKG/org.julakali.powertrip.android.phone.MainActivity"
 
 # --- Where this machine keeps the SDK (Linux, macOS, or whatever the IDE wrote) ---
 sdk_root() {
@@ -180,7 +180,7 @@ cmd_type() { adb -s "$(pick_device)" shell input text "${1// /%s}"; }
 
 cmd_log() {
     adb -s "$(pick_device)" logcat -d -t "${1:-400}" 2>/dev/null \
-        | grep "W ChargeAhead " || echo "(no app warnings)"
+        | grep "W PowerTrip " || echo "(no app warnings)"
 }
 
 # Copies one file out of the app's private data directory. An empty result

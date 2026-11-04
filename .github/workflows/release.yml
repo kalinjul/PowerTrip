@@ -27,7 +27,7 @@ concurrency:
 permissions:
   contents: read
 
-# Read by settings.gradle.kts to resolve org.julakali.chargeahead:api-model.
+# Read by settings.gradle.kts to resolve org.julakali.powertrip:api-model.
 env:
   CHARGEAHEAD_MAVEN_USER: ${{ secrets.CHARGEAHEAD_MAVEN_USER }}
   CHARGEAHEAD_MAVEN_PASSWORD: ${{ secrets.CHARGEAHEAD_MAVEN_PASSWORD }}

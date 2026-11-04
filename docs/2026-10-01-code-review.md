@@ -9,7 +9,7 @@ repo. Every claim was checked against the pinned library versions in
 What is clean, so nobody re-reviews it: use cases depend only on ports and
 domain; `Dispatchers.*` appears only in Koin modules; every settings write goes
 through an interactor; `TripRepository.update` is internal; the core planner
-reimplements nothing a dependency offers; `ChargeAheadMotion`, `LazyFlowRow`,
+reimplements nothing a dependency offers; `PowerTripMotion`, `LazyFlowRow`,
 the marker bitmap cache and `SheetScene` are justified custom code.
 
 ## Start here

@@ -12,7 +12,7 @@ next reachable charging stations ahead while driving. Shared logic in Kotlin
 Multiplatform, car UI native twice.
 
 The app determines the location, searches ahead (a sector in the direction
-of travel, or the strip along a planned route), queries the ChargeAhead
+of travel, or the strip along a planned route), queries the PowerTrip
 backend, and classifies the results against the remaining range. The driver
 picks the car from the backend's catalog or types it in, and enters the
 charge level unless the car reports it. Without a car or a charge level,
@@ -244,7 +244,7 @@ What it contains is documented next to the code it describes:
 - [docs/shared/domain-model.md](docs/shared/domain-model.md) — sites, stops,
   vehicles and the garage, search areas and routes
 - [docs/shared/data-layer.md](docs/shared/data-layer.md) — data sources,
-  repositories, the ChargeAhead backend, verifying a data source
+  repositories, the PowerTrip backend, verifying a data source
 - [docs/shared/use-cases.md](docs/shared/use-cases.md) — interactors and
   observers
 - [docs/shared/assembly.md](docs/shared/assembly.md) — `ChargeStopsFeature`,
@@ -263,7 +263,7 @@ The rules that hold everywhere:
   `AppCoroutineDispatchers` and `get<CoroutineScope>(AppScope)`; never
   `CoroutineScope(...)` or `Dispatchers.*` outside the Koin module.
 - **One settings file per process**, opened once by `settingsModule { … }`.
-- **The ChargeAhead backend is required.** The app stops at startup without
+- **The PowerTrip backend is required.** The app stops at startup without
   it, and always runs against the current backend: a field the backend sends
   is required in the app, even when `api-model` declares it optional. Base
   URL and token never go into the repository (`local.properties`,
@@ -274,7 +274,7 @@ The rules that hold everywhere:
 ## Rules for the phone UI
 
 Every screen's state lives in a **ViewModel in
-`shared/src/commonMain/kotlin/org/julakali/chargeahead/shared/ui/`**, publishing one
+`shared/src/commonMain/kotlin/org/julakali/powertrip/shared/ui/`**, publishing one
 `uiState: StateFlow<XUiState>`; the Compose screen is stateless and takes
 that state plus lambdas. The pattern is the MVI-like one from "Now in
 Android"; the rules, the template and the test setup are in the

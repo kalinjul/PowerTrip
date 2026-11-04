@@ -1,0 +1,658 @@
+package org.julakali.powertrip.shared.data
+
+import org.julakali.powertrip.shared.testAppScope
+import org.julakali.powertrip.shared.testDispatchers
+import org.julakali.powertrip.shared.db.ChargeSiteDatabase
+import org.julakali.powertrip.shared.db.Converters
+import org.julakali.powertrip.shared.db.DatabaseFactory
+import org.julakali.powertrip.shared.db.createChargeSiteDatabase
+import org.julakali.powertrip.shared.domain.ChargeSite
+import org.julakali.powertrip.shared.domain.ChargeSiteSource
+import org.julakali.powertrip.shared.domain.Connector
+import org.julakali.powertrip.shared.domain.ConnectorType
+import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.MapFilter
+import org.julakali.powertrip.shared.domain.NetworkPreferences
+import org.julakali.powertrip.shared.domain.SearchArea
+import org.julakali.powertrip.shared.domain.PolylineArea
+import org.julakali.powertrip.shared.domain.PriceComponent
+import org.julakali.powertrip.shared.domain.PriceKind
+import org.julakali.powertrip.shared.domain.SectorArea
+import org.julakali.powertrip.shared.domain.Tariff
+import org.julakali.powertrip.shared.domain.TimeProvider
+import org.julakali.powertrip.shared.domain.Weekday
+import org.julakali.powertrip.shared.domain.BoundingBox
+import org.julakali.powertrip.shared.domain.destination
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class TiledSiteRepositoryTest {
+
+    private val start = LatLon(48.9331, 11.4779)
+
+    private class ControllableClock(var now: Long = 0L) : TimeProvider {
+        override fun nowMillis() = now
+    }
+
+    private class ControllableSource(var sites: List<ChargeSite> = emptyList()) : ChargeSiteSource {
+        override val id = "test"
+        var queries = 0
+            private set
+        var broken = false
+
+        var lastArea: SearchArea? = null
+            private set
+
+        override suspend fun query(area: SearchArea, networkKeys: Set<String>): List<ChargeSite> {
+            queries++
+            lastArea = area
+            if (broken) throw IllegalStateException("Dead zone")
+            return sites
+        }
+    }
+
+    private fun database(): ChargeSiteDatabase = createChargeSiteDatabase(DatabaseFactory(), Dispatchers.IO)
+
+    private fun site(id: String, bearingDeg: Double, distanceKm: Double) = ChargeSite(
+        id = id,
+        name = "Ladepark $id",
+        operator = "TestNetz",
+        position = start.destination(bearingDeg, distanceKm),
+        connectors = listOf(Connector(ConnectorType.CCS2, maxPowerKw = 150.0, count = 4)),
+    )
+
+    private fun area(radiusKm: Double = 40.0) = SectorArea.circle(start, radiusKm)
+
+    /** Refills [area], then reads it back from the store. */
+    private suspend fun TiledSiteRepository.loaded(area: SearchArea): List<ChargeSite> {
+        load(area)
+        return storedSitesIn(area).first()
+    }
+
+    private val everyDcSite = MapFilter(NetworkPreferences(onlyPreferred = false), minPowerKw = 0.0, slowMode = false)
+
+    private val aroundStart = BoundingBox(south = 48.0, west = 10.0, north = 50.0, east = 13.0)
+
+    private fun siteWith(id: String, operator: String, powerKw: Double, type: ConnectorType = ConnectorType.CCS2) =
+        site(id, 0.0, 5.0).copy(
+            operator = operator,
+            connectors = listOf(Connector(type, powerKw, 2)),
+            networkKey = operator.lowercase(),
+        )
+
+    @Test
+    fun `stored sites are found by id, and an unknown id is left out`() = runBlocking {
+        val repository = TiledSiteRepository(
+            ControllableSource(listOf(site("a", 0.0, 10.0), site("b", 90.0, 10.0))),
+            database(), ControllableClock(), testAppScope, testDispatchers.computation,
+        )
+        repository.load(area())
+
+        assertEquals(mapOf("a" to site("a", 0.0, 10.0).copy(sources = setOf("test"))), repository.storedSites(setOf("a", "gone")))
+    }
+
+    @Test
+    fun `an area is covered once fetched, not when the fetch failed over older sites`() = runBlocking {
+        val source = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        val clock = ControllableClock()
+        val repository = TiledSiteRepository(source, database(), clock, testAppScope, testDispatchers.computation)
+
+        assertFalse(repository.covers(area()))
+        repository.load(area())
+        assertTrue(repository.covers(area()))
+
+        clock.now += TiledSiteRepository.DEFAULT_TTL_MILLIS + 1
+        source.broken = true
+        repository.load(area())
+        assertFalse(repository.covers(area()))
+    }
+
+    @Test
+    fun adHocTariffsSurviveTheStore() = runBlocking {
+        val tariff = Tariff(
+            currency = "EUR",
+            components = listOf(PriceComponent(PriceKind.PER_MINUTE, 0.1, fromMinute = 240, days = setOf(Weekday.SUNDAY))),
+            connectors = listOf(ConnectorType.CCS2),
+        )
+        val repository = TiledSiteRepository(
+            ControllableSource(listOf(site("a", 0.0, 10.0).copy(adHocTariffs = listOf(tariff)))),
+            database(), ControllableClock(), testAppScope, testDispatchers.computation,
+        )
+        repository.load(area())
+
+        assertEquals(listOf(tariff), repository.storedSitesIn(area()).first().single().adHocTariffs)
+    }
+
+    /** Stores [sites], then reads them back through [filter]. */
+    private fun storedThrough(filter: MapFilter, vararg sites: ChargeSite): Set<String> = runBlocking {
+        val repository = TiledSiteRepository(ControllableSource(sites.toList()), database(), ControllableClock(), testAppScope, testDispatchers.computation)
+        repository.load(area())
+        repository.storedSitesIn(aroundStart, filter).first().map { it.id }.toSet()
+    }
+
+    /** Sites of different networks at one spot stay separate and keep their network (#199). */
+    @Test
+    fun neighbouringSitesOfDifferentNetworksStayApartAndKeepTheirNetwork() = runBlocking {
+        val sites = listOf(
+            siteWith("ionity", "Ionity", 350.0).copy(operatorId = 11L),
+            siteWith("enbw", "EnBW", 300.0).copy(operatorId = 22L),
+        )
+        val repository = TiledSiteRepository(ControllableSource(sites), database(), ControllableClock(), testAppScope, testDispatchers.computation)
+        val expected = setOf(Triple("ionity", "ionity", 11L), Triple("enbw", "enbw", 22L))
+        fun List<ChargeSite>.networks() = map { Triple(it.id, it.networkKey, it.operatorId) }.toSet()
+
+        repository.load(area())
+
+        assertEquals(expected, repository.storedSitesIn(area()).first().networks())
+        assertEquals(expected, repository.storedSitesIn(aroundStart, everyDcSite).first().networks())
+        assertEquals(expected, repository.storedSitesNearest(start, aroundStart, everyDcSite, limit = 5).first().networks())
+    }
+
+    @Test
+    fun theStoreKeepsTheSitesOwnSources() = runBlocking {
+        val sites = listOf(
+            siteWith("merged", "Ionity", 350.0).copy(sources = setOf("datex", "bnetza")),
+            siteWith("plain", "EnBW", 300.0),
+        )
+        val repository = TiledSiteRepository(ControllableSource(sites), database(), ControllableClock(), testAppScope, testDispatchers.computation)
+        repository.load(area())
+
+        val stored = repository.storedSitesIn(aroundStart, everyDcSite).first().associate { it.id to it.sources }
+        // Without sources of its own, a site credits the source that fetched it.
+        assertEquals(mapOf("merged" to setOf("datex", "bnetza"), "plain" to setOf("test")), stored)
+    }
+
+    @Test
+    fun theStoreFiltersByMinimumDcPower() {
+        val ids = storedThrough(
+            everyDcSite.copy(minPowerKw = 150.0),
+            siteWith("hpc", "Ionity", 350.0),
+            siteWith("slow-dc", "EnBW", 50.0),
+            siteWith("wallbox", "Stadtwerke", 22.0, ConnectorType.TYPE2),
+        )
+
+        assertEquals(setOf("hpc"), ids)
+    }
+
+    @Test
+    fun theStoreFiltersByNetwork() {
+        val ids = storedThrough(
+            everyDcSite.copy(networks = NetworkPreferences(onlyPreferred = true, preferredOperators = setOf("fastned"))),
+            siteWith("ionity", "Ionity", 350.0),
+            siteWith("fastned", "Fastned", 300.0),
+            siteWith("unknown", "Hinterhof-Strom", 300.0),
+        )
+
+        // Sites of other networks are hidden while a network filter is active.
+        assertEquals(setOf("fastned"), ids)
+    }
+
+    @Test
+    fun inSlowModeTheStoreReturnsOnlySub50kWSitesAndIgnoresTheFastFilters() {
+        val ids = storedThrough(
+            MapFilter(
+                networks = NetworkPreferences(onlyPreferred = true, preferredOperators = setOf("ionity")),
+                minPowerKw = 150.0,
+                slowMode = true,
+            ),
+            siteWith("hpc", "Ionity", 350.0),
+            siteWith("wallbox", "Stadtwerke", 22.0, ConnectorType.TYPE2),
+            siteWith("schuko", "Hotel", 3.7, ConnectorType.SCHUKO),
+        )
+
+        assertEquals(setOf("wallbox", "schuko"), ids)
+    }
+
+    @Test
+    fun firstQuery_goesToTheSourceAndReturnsResults() = runBlocking {
+        val source = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+
+        assertEquals(listOf("a"), repository.loaded(area()).map { it.id })
+        assertEquals(1, source.queries)
+    }
+
+    @Test
+    fun secondQuery_comesFromTheDatabase() = runBlocking {
+        val source = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+
+        repository.load(area())
+        repository.load(area())
+
+        assertEquals(1, source.queries)
+    }
+
+    @Test
+    fun theLocalStoreSurvivesTheProcess() = runBlocking {
+        val db = database()
+        val firstSource = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        TiledSiteRepository(firstSource, db, ControllableClock(), testAppScope, testDispatchers.computation).load(area())
+
+        // A new repository on the same database = an app restart.
+        val secondSource = ControllableSource(emptyList())
+        val afterRestart = TiledSiteRepository(secondSource, db, ControllableClock(), testAppScope, testDispatchers.computation).loaded(area())
+
+        assertEquals(listOf("a"), afterRestart.map { it.id })
+        assertEquals(0, secondSource.queries, "A fresh local store needs no network")
+    }
+
+    @Test
+    fun inADeadZone_theLocalStoreStaysReadable() = runBlocking {
+        val db = database()
+        val source = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        TiledSiteRepository(source, db, ControllableClock(), testAppScope, testDispatchers.computation).load(area())
+
+        // Drove on, new area, no network.
+        source.broken = true
+        val newArea = SectorArea.circle(start.destination(0.0, 5.0), radiusKm = 40.0)
+        val list = TiledSiteRepository(source, db, ControllableClock(), testAppScope, testDispatchers.computation).loaded(newArea)
+
+        assertEquals(listOf("a"), list.map { it.id }, "The list must not go empty in a tunnel")
+    }
+
+    @Test
+    fun withNoStoreAndNoNetwork_theErrorIsReported() {
+        // Nothing stored and no network: the failure must surface.
+        val source = ControllableSource().apply { broken = true }
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+
+        runBlocking {
+            assertFailsWith<IllegalStateException> { repository.load(area()) }
+        }
+    }
+
+    @Test
+    fun afterTheTtlExpires_itRefetches() = runBlocking {
+        val clock = ControllableClock()
+        val source = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        val repository = TiledSiteRepository(source, database(), clock, testAppScope, testDispatchers.computation, ttlMillis = 1_000L)
+
+        repository.load(area())
+        clock.now = 1_001L
+        repository.load(area())
+
+        assertEquals(2, source.queries)
+    }
+
+    @Test
+    fun aNotYetVisitedArea_triggersAFetch() = runBlocking {
+        val source = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+
+        repository.load(area())
+        repository.load(SectorArea.circle(LatLon(52.5, 13.4), radiusKm = 40.0))
+
+        assertEquals(2, source.queries)
+    }
+
+    @Test
+    fun invalidate_forcesARefetch_withoutClearingTheStore() = runBlocking {
+        val source = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+        repository.load(area())
+
+        repository.invalidate()
+        source.broken = true
+
+        // Reloading fails, but the cache is still there.
+        assertEquals(listOf("a"), repository.loaded(area()).map { it.id })
+        assertEquals(2, source.queries)
+    }
+
+    @Test
+    fun sitesOutsideTheArea_areNotReturned() = runBlocking {
+        val db = database()
+        val source = ControllableSource(listOf(site("nah", 0.0, 10.0), site("fern", 0.0, 300.0)))
+        TiledSiteRepository(source, db, ControllableClock(), testAppScope, testDispatchers.computation).load(SectorArea.circle(start, 400.0))
+
+        val smallArea = TiledSiteRepository(source, db, ControllableClock(), testAppScope, testDispatchers.computation).loaded(area(40.0))
+
+        assertEquals(listOf("nah"), smallArea.map { it.id })
+    }
+
+    @Test
+    fun aSiteIsUpdatedNotDuplicated() = runBlocking {
+        val db = database()
+        val clock = ControllableClock()
+        val source = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        val repository = TiledSiteRepository(source, db, clock, testAppScope, testDispatchers.computation, ttlMillis = 1_000L)
+        repository.load(area())
+
+        source.sites = listOf(site("a", 0.0, 10.0).copy(name = "Renamed"))
+        clock.now = 1_001L
+        val list = repository.loaded(area())
+
+        assertEquals(1, list.size)
+        assertEquals("Renamed", list.single().name)
+    }
+
+    @Test
+    fun connectorsSurviveBeingStored() = runBlocking {
+        val db = database()
+        val withConnectors = site("a", 0.0, 10.0).copy(
+            connectors = listOf(
+                Connector(ConnectorType.CCS2, maxPowerKw = 350.0, count = 6),
+                Connector(ConnectorType.TYPE2, maxPowerKw = 22.0, count = null),
+            ),
+        )
+        TiledSiteRepository(ControllableSource(listOf(withConnectors)), db, ControllableClock(), testAppScope, testDispatchers.computation)
+            .load(area())
+
+        val loaded = TiledSiteRepository(ControllableSource(), db, ControllableClock(), testAppScope, testDispatchers.computation)
+            .loaded(area())
+            .single()
+
+        assertEquals(2, loaded.connectors.size)
+        assertEquals(ConnectorType.CCS2, loaded.connectors[0].type)
+        assertEquals(350.0, loaded.connectors[0].maxPowerKw)
+        assertEquals(6, loaded.connectors[0].count)
+        // An unknown count must stay unknown, not turn into 0.
+        assertNull(loaded.connectors[1].count)
+    }
+
+    @Test
+    fun aSiteWithoutConnectors_comesBackEmpty() = runBlocking {
+        val db = database()
+        val withoutConnectors = site("a", 0.0, 10.0).copy(connectors = emptyList())
+        TiledSiteRepository(ControllableSource(listOf(withoutConnectors)), db, ControllableClock(), testAppScope, testDispatchers.computation).load(area())
+
+        val loaded = TiledSiteRepository(ControllableSource(), db, ControllableClock(), testAppScope, testDispatchers.computation)
+            .loaded(area()).single()
+
+        assertTrue(loaded.connectors.isEmpty())
+    }
+
+    @Test
+    fun anUnknownConnectorTypeFromTheDatabase_doesNotCostTheWholeStore() {
+        // Unknown enum names must not throw.
+        val decoded = Converters().connectorsFromJson(
+            """[{"type":"STECKER_AUS_DER_ZUKUNFT","maxPowerKw":150.0,"count":2}]""",
+        )
+
+        assertEquals(1, decoded.size)
+        assertEquals(ConnectorType.UNKNOWN, decoded.single().type)
+        assertEquals(150.0, decoded.single().maxPowerKw)
+        assertEquals(2, decoded.single().count)
+    }
+
+    @Test
+    fun storedLoad_returnsFromCacheWithoutQuerying() = runBlocking {
+        // Populate the DB via a first repository, then prove a new one on the
+        // same DB reads back via storedSitesIn without touching the source.
+        val db = database()
+        val populatingSource = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        TiledSiteRepository(populatingSource, db, ControllableClock(), testAppScope, testDispatchers.computation).load(area())
+
+        val readingSource = ControllableSource(emptyList())
+        val reader = TiledSiteRepository(readingSource, db, ControllableClock(), testAppScope, testDispatchers.computation)
+        val box = BoundingBox(south = 48.0, west = 10.0, north = 50.0, east = 13.0)
+        val result = reader.storedSitesIn(box, everyDcSite).first()
+
+        assertEquals(listOf("a"), result.map { it.id })
+        assertEquals(0, readingSource.queries, "storedSitesIn must not query the source")
+    }
+
+    @Test
+    fun storedSitesIn_emitsAgainWhenAFetchStoresNewSites() = runBlocking {
+        val repository = TiledSiteRepository(ControllableSource(listOf(site("a", 0.0, 10.0))), database(), ControllableClock(), testAppScope, testDispatchers.computation)
+        val box = BoundingBox(south = 48.0, west = 10.0, north = 50.0, east = 13.0)
+
+        val emissions = MutableStateFlow<List<List<ChargeSite>>>(emptyList())
+        val collector = launch { repository.storedSitesIn(box, everyDcSite).collect { sites -> emissions.update { it + listOf(sites) } } }
+        withTimeout(5_000) { emissions.first { it.isNotEmpty() } }
+
+        repository.load(area())
+
+        val seen = withTimeout(5_000) { emissions.first { it.last().isNotEmpty() } }
+        collector.cancel()
+        assertEquals(emptyList(), seen.first(), "the empty store comes first")
+        assertEquals(listOf("a"), seen.last().map { it.id })
+    }
+
+    @Test
+    fun forACorridor_aFullCircleIsFetched() = runBlocking {
+        // Sectors are fetched as full circles.
+        val source = ControllableSource()
+        val corridor = SectorArea(start, bearingDeg = 180.0, halfAngleDeg = 35.0, radiusKm = 40.0)
+
+        TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation).load(corridor)
+
+        val fetched = requireNotNull(source.lastArea)
+        assertTrue(fetched is SectorArea && fetched.halfAngleDeg >= 180.0, "Not a full circle")
+        assertEquals(65.0, fetched.radiusKm)
+    }
+
+    private class RecordingSource(override val id: String = "ocm") : ChargeSiteSource {
+        val calls = mutableListOf<Set<String>>()
+        var toReturn: List<ChargeSite> = emptyList()
+        override suspend fun query(area: SearchArea, networkKeys: Set<String>): List<ChargeSite> {
+            calls += networkKeys; return toReturn
+        }
+    }
+
+    @Test
+    fun adding_a_network_fetches_only_the_missing_one() = runTest {
+        val src = RecordingSource()
+        val repo = TiledSiteRepository(src, database(), ControllableClock(1000L), testAppScope, testDispatchers.computation)
+        val a = SectorArea.circle(LatLon(48.1, 11.5), 1.0)
+
+        repo.load(a, setOf("enbw"))
+        repo.load(a, setOf("enbw", "ionity"))
+
+        assertEquals(2, src.calls.size)
+        assertEquals(setOf("enbw"), src.calls[0])
+        assertEquals(setOf("ionity"), src.calls[1])
+    }
+
+    @Test
+    fun removing_a_network_fetches_nothing() = runTest {
+        val src = RecordingSource()
+        val repo = TiledSiteRepository(src, database(), ControllableClock(1000L), testAppScope, testDispatchers.computation)
+        val a = SectorArea.circle(LatLon(48.1, 11.5), 1.0)
+
+        repo.load(a, setOf("enbw", "ionity"))
+        val before = src.calls.size
+        repo.load(a, setOf("enbw"))
+
+        assertEquals(before, src.calls.size)
+    }
+
+    @Test
+    fun unfiltered_uses_sentinel_and_behaves_as_before() = runTest {
+        val src = RecordingSource()
+        val repo = TiledSiteRepository(src, database(), ControllableClock(1000L), testAppScope, testDispatchers.computation)
+        val a = SectorArea.circle(LatLon(48.1, 11.5), 1.0)
+
+        repo.load(a)
+        repo.load(a)
+
+        assertEquals(1, src.calls.size)
+        assertEquals(emptySet(), src.calls[0])
+    }
+
+    @Test
+    fun forARoute_theRouteBufferStaysUnchanged() = runBlocking {
+        // A route must not be inflated into a circle around its start.
+        val source = ControllableSource()
+        val route = PolylineArea(
+            listOf(start, start.destination(180.0, 80.0), start.destination(180.0, 170.0)),
+            bufferKm = 2.0,
+        )
+
+        TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation).load(route)
+
+        val fetched = requireNotNull(source.lastArea)
+        assertTrue(fetched is PolylineArea, "The route buffer turned into ${fetched::class.simpleName}")
+        assertEquals(2.0, fetched.bufferKm)
+    }
+
+    @Test
+    fun whileContinuingOnTheRoute_noRefetchHappens() = runBlocking {
+        // aheadOf() only shrinks the area — whatever was fetched once covers
+        // the rest of the trip.
+        val source = ControllableSource(listOf(site("a", 180.0, 10.0)))
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+        val route = PolylineArea(
+            listOf(start, start.destination(180.0, 80.0), start.destination(180.0, 170.0)),
+            bufferKm = 2.0,
+        )
+
+        repository.load(route)
+        repository.load(requireNotNull(route.aheadOf(start.destination(180.0, 40.0))))
+
+        assertEquals(1, source.queries)
+    }
+
+    @Test
+    fun aStalledFetch_doesNotBlockFetchesForOtherAreas() = runBlocking<Unit> {
+        // Area A's fetch hangs; a fetch for area B must still complete.
+        val gate = CompletableDeferred<Unit>()
+        val source = object : ChargeSiteSource {
+            override val id = "test"
+            var queries = 0
+            override suspend fun query(area: SearchArea, networkKeys: Set<String>): List<ChargeSite> {
+                queries++
+                if (queries == 1) gate.await() // only the first area stalls
+                return emptyList()
+            }
+        }
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+
+        val stalled = async { repository.load(area()) }
+        while (source.queries < 1) yield() // let area A reach its gated query
+
+        // Would time out if it queued behind the stalled fetch.
+        withTimeout(5_000) { repository.load(SectorArea.circle(LatLon(52.5, 13.4), 40.0)) }
+
+        assertTrue(stalled.isActive, "area A's fetch is still stalled")
+        gate.complete(Unit)
+        stalled.await()
+    }
+
+    @Test
+    fun concurrentFetchesForTheSameArea_hitTheSourceOnce() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val source = object : ChargeSiteSource {
+            override val id = "test"
+            var queries = 0
+            override suspend fun query(area: SearchArea, networkKeys: Set<String>): List<ChargeSite> {
+                queries++
+                gate.await()
+                return listOf(site("a", 0.0, 10.0))
+            }
+        }
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+        val a = area()
+
+        val first = async { repository.load(a) }
+        while (source.queries < 1) yield() // first fetch is in flight
+        val second = async { repository.load(a) }
+        yield() // let the second reach the de-dup
+        gate.complete(Unit)
+
+        first.await()
+        second.await()
+        assertEquals(listOf("a"), repository.storedSitesIn(a).first().map { it.id })
+        assertEquals(1, source.queries, "the identical concurrent fetch was de-duplicated")
+    }
+
+    /** Answers like the real sources do: only what lies inside the requested shape. */
+    private class ShapeClippingSource(private val sites: List<ChargeSite>) : ChargeSiteSource {
+        override val id = "test"
+        var queries = 0
+            private set
+
+        override suspend fun query(area: SearchArea, networkKeys: Set<String>): List<ChargeSite> {
+            queries++
+            return sites.filter { it.position in area }
+        }
+    }
+
+    private fun siteAt(id: String, position: LatLon) = ChargeSite(
+        id = id,
+        name = "Ladepark $id",
+        operator = "TestNetz",
+        position = position,
+        connectors = listOf(Connector(ConnectorType.CCS2, maxPowerKw = 150.0, count = 4)),
+    )
+
+    @Test
+    fun afterARoute_aSiteOffTheCorridorButInsideItsBox_isStillFound() = runBlocking {
+        // A diagonal route: its box is ~57 × 57 km, the corridor only ~6 km
+        // wide. The site sits ~28 km off the route, inside the box — the
+        // route fetch never asked for it, so the area around it is unchecked.
+        val offCorridor = start.destination(90.0, 40.0).destination(180.0, 10.0)
+        val source = ShapeClippingSource(listOf(siteAt("off", offCorridor)))
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+        val route = PolylineArea(listOf(start, start.destination(135.0, 80.0)), bufferKm = 3.0)
+
+        repository.load(route)
+        val nearby = repository.loaded(SectorArea.circle(offCorridor, 3.0))
+
+        assertEquals(listOf("off"), nearby.map { it.id }, "The route's box was recorded as checked")
+    }
+
+    @Test
+    fun afterANarrowRouteBuffer_aWiderBufferOnTheSameRoute_findsTheLoadBetween() = runBlocking {
+        // The car list follows the route with 2 km, the trip planner with 3 km.
+        // A site 2.5 km off the route belongs to the second answer.
+        val route = listOf(start, start.destination(180.0, 80.0), start.destination(180.0, 170.0))
+        val between = start.destination(180.0, 40.0).destination(90.0, 2.5)
+        val source = ShapeClippingSource(listOf(siteAt("between", between)))
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+
+        repository.load(PolylineArea(route, bufferKm = 2.0))
+        val wider = PolylineArea(route, bufferKm = 3.0)
+        val found = repository.loaded(wider)
+
+        assertEquals(listOf("between"), found.map { it.id }, "The 2 km fetch was recorded as covering the 3 km buffer")
+    }
+
+    @Test
+    fun aFailedRefill_isSwallowedOnlyWhileSomethingIsStored() = runBlocking<Unit> {
+        val source = ControllableSource(listOf(site("a", 0.0, 10.0)))
+        val repository = TiledSiteRepository(source, database(), ControllableClock(), testAppScope, testDispatchers.computation)
+        repository.load(area())
+        source.broken = true
+
+        repository.load(SectorArea.circle(start.destination(0.0, 5.0), radiusKm = 40.0))
+        assertFailsWith<IllegalStateException> { repository.load(SectorArea.circle(LatLon(52.5, 13.4), radiusKm = 40.0)) }
+    }
+
+    @Test
+    fun aRoutesStoredSites_areThoseWithinItsBuffer() = runBlocking {
+        val route = PolylineArea(
+            listOf(start, start.destination(135.0, 80.0), start.destination(180.0, 140.0)),
+            bufferKm = 2.0,
+        )
+        val sites = listOf(
+            siteAt("atStart", start),
+            siteAt("onFirstLeg", start.destination(135.0, 40.0).destination(45.0, 1.5)),
+            siteAt("atTheBend", start.destination(135.0, 80.0).destination(90.0, 1.5)),
+            siteAt("atTheEnd", start.destination(180.0, 140.0)),
+            siteAt("justOutside", start.destination(135.0, 40.0).destination(45.0, 2.5)),
+            siteAt("inTheRoutesBox", start.destination(180.0, 60.0)),
+        )
+        val repository = TiledSiteRepository(ControllableSource(sites), database(), ControllableClock(), testAppScope, testDispatchers.computation)
+
+        val stored = repository.loaded(route).map { it.id }.toSet()
+
+        assertEquals(setOf("atStart", "onFirstLeg", "atTheBend", "atTheEnd"), stored)
+    }
+}

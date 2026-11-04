@@ -41,7 +41,7 @@ jobs:
       - name: Check the Maven credentials
         run: |
           if [ -z "${CHARGEAHEAD_MAVEN_USER:-}" ] || [ -z "${CHARGEAHEAD_MAVEN_PASSWORD:-}" ]; then
-            echo "::error title=No Maven credentials::org.julakali.chargeahead:api-model cannot be resolved without them."
+            echo "::error title=No Maven credentials::org.julakali.powertrip:api-model cannot be resolved without them."
             exit 1
           fi
 
@@ -67,7 +67,7 @@ jobs:
       - name: Commit the goldens
         id: commit
         run: |
-          git add iosApp/ChargeAheadSnapshotTests
+          git add iosApp/PowerTripSnapshotTests
           if git diff --cached --quiet; then
             echo "The goldens were already up to date."
             exit 0

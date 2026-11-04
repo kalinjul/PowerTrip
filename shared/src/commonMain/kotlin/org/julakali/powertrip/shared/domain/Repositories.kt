@@ -1,0 +1,130 @@
+package org.julakali.powertrip.shared.domain
+
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+/**
+ * The stock of charging sites the list is built from. The app always reads
+ * from this stock and replenishes it in the background.
+ */
+interface SiteRepository {
+    /**
+     * Refills the stock for [area]; the sites themselves are read from the
+     * `storedSitesIn` flows. Empty [networkKeys] means every network.
+     */
+    suspend fun load(area: SearchArea, networkKeys: Set<String> = emptySet())
+
+    /**
+     * The stored sites in [box] that pass [filter] — no fetch, no coverage
+     * check — and again whenever the store changes. An empty list is valid;
+     * [load] refills.
+     */
+    fun storedSitesIn(box: BoundingBox, filter: MapFilter): Flow<List<ChargeSite>>
+
+    /** Every stored site in [area], unfiltered, and again whenever the store changes. */
+    fun storedSitesIn(area: SearchArea): Flow<List<ChargeSite>>
+
+    /**
+     * The [limit] stored sites in [box] nearest to [position] that pass [filter],
+     * nearest first. A store does the cut in SQL so the rest never become objects.
+     */
+    fun storedSitesNearest(position: LatLon, box: BoundingBox, filter: MapFilter, limit: Int): Flow<List<ChargeSite>> =
+        storedSitesIn(box, filter).map { sites -> sites.sortedBy { position.distanceKmTo(it.position) }.take(limit) }
+
+    /** Whether the stock for [area] was fetched recently enough that [load] would not fetch again. */
+    suspend fun covers(area: SearchArea, networkKeys: Set<String> = emptySet()): Boolean
+
+    /** The stored sites with the given ids, no fetch; an id the store lacks is absent from the result. */
+    suspend fun storedSites(ids: Set<String>): Map<String, ChargeSite>
+
+    /**
+     * Discards the stock so the next access actually queries.
+     */
+    suspend fun invalidate()
+}
+
+/** Housekeeping on the stored sites, run once at app start. */
+fun interface SiteCache {
+    /** Drops stale coverage and sites of networks nobody asked for, keeping [preferredNetworkKeys]. */
+    suspend fun prune(preferredNetworkKeys: Set<String>)
+}
+
+/** The networks the backend has listed, kept so a selection outlives the list it came from. */
+interface NetworkRepository {
+    /** Every network ever listed; [Network.rank] marks those on the current list. */
+    val networks: Flow<List<Network>>
+
+    /** Keeps what is stored when the backend fails or has no list yet. */
+    suspend fun refresh()
+}
+
+/** The backend's vehicle catalog, kept so the garage works offline. */
+interface VehicleCatalogRepository {
+    /** In the backend's order; empty until the first sync. */
+    val presets: Flow<List<VehiclePreset>>
+
+    /** Keeps what is stored when the backend fails or answers with an empty list. */
+    suspend fun refresh()
+}
+
+/** The driver's vehicles and charge levels. Outlives the process. */
+interface VehicleRepository {
+    /** The selected vehicle. */
+    val vehicle: Flow<VehicleProfile?>
+
+    /** The whole garage, selected vehicle included. */
+    val vehicles: Flow<List<VehicleProfile>>
+
+    /** Typed in by the driver, or the last level the car reported (see RememberingSoCSource). */
+    val manualSocPercent: Flow<Double?>
+
+    /** How full the battery should still be at the destination. */
+    val arrivalSocPercent: Flow<Double>
+
+    /** Selects [profile] and adds it to the garage, or updates the car with its id there. */
+    suspend fun setVehicle(profile: VehicleProfile?)
+
+    /** Applies [transform] to every car in the garage, the selected one included, in one write. */
+    suspend fun updateVehicles(transform: (VehicleProfile) -> VehicleProfile)
+
+    /** Removes from the garage; if it was the selected vehicle, the first remaining one takes over. */
+    suspend fun removeVehicle(id: String)
+
+    suspend fun setManualSocPercent(socPercent: Double?)
+
+    suspend fun setArrivalSocPercent(socPercent: Double)
+}
+
+/** Which chargers the driver wants to see. Outlives the process. */
+interface PreferencesRepository {
+    val networks: Flow<NetworkPreferences>
+
+    /** Hard limits for the phone flows (planning, "charge now"). */
+    val chargeFilters: Flow<ChargeFilters>
+
+    suspend fun setNetworks(preferences: NetworkPreferences)
+
+    suspend fun setChargeFilters(filters: ChargeFilters)
+}
+
+interface DestinationHistory {
+    /** Recently used destinations, newest first. */
+    val recentDestinations: Flow<List<Destination>>
+
+    /** Puts [destination] first in the history. */
+    suspend fun addRecentDestination(destination: Destination)
+}
+
+/** What the car last told us, kept for the phone's debug views. */
+interface CarDiagnosticsRepository {
+    /** The outcome of the last attempt to read the charge level from the vehicle. */
+    val socDiagnostics: Flow<SoCDiagnostics?>
+
+    /** Everything the car hardware last delivered, one point per [CarDataKind]. */
+    val carDebugData: Flow<List<CarDataPoint>>
+
+    suspend fun recordSoCDiagnostics(diagnostics: SoCDiagnostics)
+
+    /** Upserts by [CarDataPoint.kind]. */
+    suspend fun recordCarDataPoint(point: CarDataPoint)
+}

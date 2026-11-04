@@ -41,7 +41,7 @@ as done:
   macOS minutes are free on a public repository.
 
 CI gets **one** secret: the Maven access to the contract module. `api-model`
-comes from the ChargeAhead backend's own repository, and without credentials
+comes from the PowerTrip backend's own repository, and without credentials
 nothing resolves and nothing compiles. Consequence, and it is a real one:
 **a pull request from a fork cannot be built here.** A preflight step in both
 Gradle jobs says so outright instead of letting the run die on a 401.
@@ -50,7 +50,7 @@ No backend or map keys: the build does not need them, only a running app
 does.
 
 Not part of CI (deliberately): the live contract tests against the backend.
-They only run with `CHARGEAHEAD_LIVE=1` — a build that goes red because a
+They only run with `POWERTRIP_LIVE=1` — a build that goes red because a
 server hiccups says nothing about this repository.
 
 ## Releasing
@@ -181,7 +181,7 @@ Before the first run, three things need deciding:
 2. Signing: App Store Connect API key with automatic signing, or fastlane
    `match` with a certificates repository. `match` is the better fit as soon
    as a second machine signs.
-3. Where the build number comes from — `iosApp/ChargeAhead/Info.plist` is
+3. Where the build number comes from — `iosApp/PowerTrip/Info.plist` is
    hand-maintained, and `project.yml` deliberately does not regenerate it.
 
 The job for it belongs on `macos-latest` with `brew install xcodegen`, in

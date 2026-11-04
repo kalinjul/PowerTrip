@@ -31,7 +31,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ChargeAhead"
+rootProject.name = "PowerTrip"
 
 include(":shared")
 include(":androidApp")

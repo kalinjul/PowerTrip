@@ -1,0 +1,287 @@
+package org.julakali.powertrip.android.phone
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import org.julakali.powertrip.android.phone.theme.PowerTripMotion
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.gms.maps.model.MapStyleOptions
+import com.google.maps.android.compose.CameraPositionState
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapProperties
+import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerComposable
+import com.google.maps.android.compose.Polyline
+import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
+import kotlinx.coroutines.delay
+import org.julakali.powertrip.android.phone.BuildConfig
+import org.julakali.powertrip.android.phone.R
+import org.julakali.powertrip.shared.domain.BoundingBox
+import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.ChargeNowCandidate
+import org.julakali.powertrip.shared.domain.MapCharger
+import org.julakali.powertrip.shared.ui.ChargeNowSheetUiState
+import org.julakali.powertrip.shared.resources.Res
+import org.julakali.powertrip.shared.resources.map_missing_key
+
+/** Without a `googleMapsApiKey` in `local.properties` the callers show [MissingMapsKeyNotice] instead of a map. */
+val hasGoogleMapsKey: Boolean get() = BuildConfig.HAS_GOOGLE_MAPS_KEY
+
+@Composable
+fun MissingMapsKeyNotice(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            stringResource(Res.string.map_missing_key),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 32.dp),
+        )
+    }
+}
+
+fun LatLon.toLatLng() = LatLng(lat, lon)
+
+/** What the trip draws over the browsing map. */
+data class RouteOverlay(
+    val points: List<LatLon>,
+    val stops: List<RouteStop>,
+    val destination: LatLon,
+)
+
+data class RouteStop(val index: Int, val position: LatLon)
+
+/** The home camera, owned by the screen so its controls can drive it. */
+@Composable
+fun rememberHomeCamera(position: LatLon?): CameraPositionState = rememberCameraPositionState {
+    this.position = CameraPosition.fromLatLngZoom((position ?: FALLBACK_CENTER).toLatLng(), HOME_ZOOM)
+}
+
+/**
+ * Home map: viewport-driven. The map reports every settled camera position
+ * upward (`null` below [MIN_CHARGER_ZOOM]); the caller passes the chargers back down.
+ */
+@Composable
+fun HomeGoogleMap(
+    position: LatLon?,
+    chargers: List<MapCharger>,
+    route: RouteOverlay?,
+    /** How much of the map's bottom the trip sheet covers. */
+    bottomInset: Dp,
+    hasLocationPermission: Boolean,
+    cameraPositionState: CameraPositionState,
+    onViewportChanged: (BoundingBox?) -> Unit,
+    onChargerTapped: (MapCharger) -> Unit,
+    /** A numbered route marker, by its 1-based index. */
+    onStopTapped: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    /** The open "charge now" sheet: once it has candidates, they replace the other chargers. */
+    chargeNow: ChargeNowSheetUiState.Open? = null,
+    /** A candidate's disc: selects it. */
+    onCandidateTapped: (ChargeNowCandidate) -> Unit = {},
+    /** The selected candidate's callout: opens its details. */
+    onCandidateOpened: (ChargeNowCandidate) -> Unit = {},
+) {
+    // No projection to read a viewport from until the map itself is up, so the
+    // first run waits for it — otherwise nothing loads until the driver pans.
+    var mapLoaded by remember { mutableStateOf(false) }
+
+    // Load once the camera settles. Also fires for the initial position.
+    LaunchedEffect(mapLoaded, cameraPositionState.isMoving) {
+        if (!mapLoaded || cameraPositionState.isMoving) return@LaunchedEffect
+        delay(350)
+        if (cameraPositionState.position.zoom < MIN_CHARGER_ZOOM) {
+            onViewportChanged(null)
+            return@LaunchedEffect
+        }
+        val bounds = cameraPositionState.projection?.visibleRegion?.latLngBounds ?: return@LaunchedEffect
+        onViewportChanged(
+            BoundingBox(
+                south = bounds.southwest.latitude,
+                west = bounds.southwest.longitude,
+                north = bounds.northeast.latitude,
+                east = bounds.northeast.longitude,
+            ),
+        )
+    }
+
+    // Follow the first fix, then leave the camera to the user.
+    var followedFirstFix by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(position != null) {
+        val target = position ?: return@LaunchedEffect
+        if (!followedFirstFix) {
+            followedFirstFix = true
+            cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(target.toLatLng(), HOME_ZOOM))
+        }
+    }
+
+    val routeLatLngs = remember(route) { route?.points.orEmpty().map { it.toLatLng() } }
+
+    // Fit once per new route; afterwards the driver may pan freely.
+    LaunchedEffect(mapLoaded, routeLatLngs) {
+        if (!mapLoaded || routeLatLngs.isEmpty()) return@LaunchedEffect
+        val bounds = LatLngBounds.builder().apply { routeLatLngs.forEach { include(it) } }.build()
+        cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(bounds, BOUNDS_PADDING_PX))
+    }
+
+    var mapSize by remember { mutableStateOf(IntSize.Zero) }
+    ChargeNowCamera(
+        chargeNow = chargeNow,
+        position = position,
+        route = route,
+        mapLoaded = mapLoaded,
+        camera = cameraPositionState,
+        mapSize = { mapSize },
+        coveredTop = TOP_CONTROLS_HEIGHT,
+        coveredBottom = bottomInset,
+    )
+    // Until there are candidates — loading, no position, nothing nearby — the map stays as it was.
+    val showsCandidates = chargeNow?.selected != null
+
+    val pillIcons = rememberPillIcons()
+    // Only flips at the threshold, so panning doesn't recompose every marker.
+    val compactMarkers by remember(cameraPositionState) {
+        derivedStateOf { cameraPositionState.position.zoom < PILL_ZOOM }
+    }
+    // Bitmaps can't morph: fade the old tier out, swap at zero, fade the new one in.
+    // Only markers on screen at the flip take part; the rest swap silently, so a
+    // large loaded set doesn't cost a recomposition per marker per frame.
+    var shownCompact by remember { mutableStateOf(compactMarkers) }
+    val tierAlpha = remember { Animatable(1f) }
+    val fade = PowerTripMotion.effects<Float>()
+    var fadeBounds by remember { mutableStateOf<LatLngBounds?>(null) }
+    LaunchedEffect(compactMarkers) {
+        if (shownCompact == compactMarkers) return@LaunchedEffect
+        fadeBounds = cameraPositionState.projection?.visibleRegion?.latLngBounds
+        tierAlpha.animateTo(0f, fade)
+        shownCompact = compactMarkers
+        tierAlpha.animateTo(1f, fade)
+        fadeBounds = null
+    }
+
+    val context = LocalContext.current
+    val darkMap = isSystemInDarkTheme()
+    val mapStyle = remember(darkMap) {
+        if (darkMap) MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_dark) else null
+    }
+    val routeColor = MaterialTheme.colorScheme.primary
+    val onRouteColor = MaterialTheme.colorScheme.onPrimary
+
+    GoogleMap(
+        cameraPositionState = cameraPositionState,
+        properties = MapProperties(isMyLocationEnabled = hasLocationPermission, mapStyleOptions = mapStyle),
+        onMapLoaded = { mapLoaded = true },
+        // The bar on top and the trip sheet below cover the map; a route must fit between them.
+        contentPadding = PaddingValues(top = TOP_CONTROLS_HEIGHT, bottom = bottomInset),
+        // The SDK's own buttons would sit inside the status bar; ours replace them.
+        uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false, compassEnabled = false),
+        modifier = modifier.onSizeChanged { mapSize = it },
+    ) {
+        if (chargeNow != null && showsCandidates) {
+            ChargeNowMarkers(chargeNow, onCandidateTapped, onCandidateOpened)
+        } else {
+            // Keyed by site: the list is re-sorted around the centre on every pan.
+            chargers.forEach { charger ->
+                key(charger.site.id) {
+                    val bounds = fadeBounds
+                    ChargerMarker(
+                        charger = charger,
+                        icons = pillIcons,
+                        compact = shownCompact,
+                        // Reading the animation subscribes to it; off-screen markers don't.
+                        alpha = if (bounds != null && bounds.contains(charger.site.position.toLatLng())) tierAlpha.value else 1f,
+                        onClick = onChargerTapped,
+                    )
+                }
+            }
+        }
+        if (route != null) {
+            if (routeLatLngs.size >= 2) {
+                Polyline(points = routeLatLngs, color = routeColor, width = 14f)
+            }
+            route.stops.forEach { stop ->
+                key(stop.index) {
+                    MarkerComposable(
+                        keys = arrayOf<Any>(stop.index, routeColor.value),
+                        state = rememberMarkerState(position = stop.position.toLatLng()),
+                        anchor = Offset(0.5f, 0.5f),
+                        onClick = { onStopTapped(stop.index); true },
+                    ) {
+                        ChargeBadge(color = routeColor) {
+                            Text(text = "${stop.index}", color = onRouteColor, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+            }
+            Marker(state = rememberMarkerState(position = route.destination.toLatLng()))
+        }
+    }
+}
+
+/** Circular disc with a white ring — the planned stops on the trip map and the "charge now" candidates. */
+@Composable
+fun ChargeBadge(color: Color, content: @Composable () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(36.dp)
+            .background(color, CircleShape)
+            .border(2.dp, Color.White, CircleShape),
+    ) {
+        content()
+    }
+}
+
+/** Frankfurt, shown before the first fix. */
+private val FALLBACK_CENTER = LatLon(50.11, 8.68)
+const val HOME_ZOOM = 11f
+
+/** The locate button: about 3.5 km to either side on a phone, close enough to read the pills. */
+const val LOCATE_ZOOM = 14f
+
+/** Below this, no chargers load. */
+const val MIN_CHARGER_ZOOM = 10f
+
+/** Below this the markers are dots; pills would pile up. */
+const val PILL_ZOOM = 11f
+private const val BOUNDS_PADDING_PX = 120
+
+/** Status bar, search bar and one row of controls. */
+private val TOP_CONTROLS_HEIGHT = 150.dp
+

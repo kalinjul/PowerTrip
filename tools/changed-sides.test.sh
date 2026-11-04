@@ -16,7 +16,7 @@ expect() {
   fi
 }
 
-expect "ios" iosApp/ChargeAhead/Phone/GarageView.swift
+expect "ios" iosApp/PowerTrip/Phone/GarageView.swift
 expect "ios" shared/src/iosMain/kotlin/X.kt
 expect "ios" shared/src/iosTest/kotlin/XTest.kt
 expect "ios" tools/ios-sim.sh tools/check-swift.sh

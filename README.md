@@ -17,9 +17,9 @@ and drive it with Google Maps. Also on Android Auto and CarPlay.
 <table align="center">
   <tr>
     <td valign="top" width="25%"><img src="docs/images/home-map.png" alt="Charging stations on the map around Kempten"></td>
-    <td valign="top" width="25%"><img src="ui-tests/src/screenshotTestDebug/reference/org/julakali/chargeahead/uitests/HomeSearchPreviewsKt/SearchResultsHits_8252daa8_0.png" alt="Destination search results"></td>
-    <td valign="top" width="25%"><img src="ui-tests/src/screenshotTestDebug/reference/org/julakali/chargeahead/uitests/TripSheetPreviewsKt/TripSheetList_8252daa8_0.png" alt="Planned trip with three charging stops"></td>
-    <td valign="top" width="25%"><img src="ui-tests/src/screenshotTestDebug/reference/org/julakali/chargeahead/uitests/ActiveRoutePreviewsKt/ActiveRoutePage_8252daa8_0.png" alt="Active route to München"></td>
+    <td valign="top" width="25%"><img src="ui-tests/src/screenshotTestDebug/reference/org/julakali/powertrip/uitests/HomeSearchPreviewsKt/SearchResultsHits_8252daa8_0.png" alt="Destination search results"></td>
+    <td valign="top" width="25%"><img src="ui-tests/src/screenshotTestDebug/reference/org/julakali/powertrip/uitests/TripSheetPreviewsKt/TripSheetList_8252daa8_0.png" alt="Planned trip with three charging stops"></td>
+    <td valign="top" width="25%"><img src="ui-tests/src/screenshotTestDebug/reference/org/julakali/powertrip/uitests/ActiveRoutePreviewsKt/ActiveRoutePage_8252daa8_0.png" alt="Active route to München"></td>
   </tr>
   <tr>
     <td align="center"><sub><b>Chargers around you</b></sub></td>
@@ -46,7 +46,7 @@ and drive it with Google Maps. Also on Android Auto and CarPlay.
 ## Getting started
 
 **Prerequisites:** JDK 17 or newer, an Android SDK with Platform 37,
-and access to the ChargeAhead backend.
+and access to the PowerTrip backend.
 
 1. Put the SDK path and the backend into `local.properties` (git-ignored):
 
@@ -89,7 +89,7 @@ in [docs/testing.md](docs/testing.md)). The backend mapping can additionally
 be checked against the real service:
 
 ```bash
-CHARGEAHEAD_LIVE=1 ./gradlew :shared:jvmTest --tests '*BackendChargeSiteLiveContractTest'
+POWERTRIP_LIVE=1 ./gradlew :shared:jvmTest --tests '*BackendChargeSiteLiveContractTest'
 ```
 
 Android Auto only runs on real hardware; the Desktop Head Unit makes it
