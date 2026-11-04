@@ -65,6 +65,7 @@ import org.julakali.powertrip.shared.domain.usecases.UpdateArrivalSocInteractor
 import org.julakali.powertrip.shared.domain.usecases.UpdateChargeFiltersInteractor
 import org.julakali.powertrip.shared.domain.usecases.UpdateManualSocInteractor
 import org.julakali.powertrip.shared.domain.usecases.SetChargeModeInteractor
+import org.julakali.powertrip.shared.domain.usecases.SetNavigationAppInteractor
 import org.julakali.powertrip.shared.domain.usecases.UpdateNetworksInteractor
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
@@ -146,6 +147,7 @@ fun chargeStopsModule(): Module = module {
     factory { UpdateChargeFiltersInteractor(get()) }
     factory { UpdateNetworksInteractor(get()) }
     factory { SetChargeModeInteractor(get(), get(), get()) }
+    factory { SetNavigationAppInteractor(get()) }
     factory { ChargeStopsObserver(get(), get(), get(), get(), get(), get(), get()) }
     factory { RefreshChargeStopsInteractor(get(), get()) }
     factory { SelectableNetworksObserver(get(), get(), get()) }

@@ -6,6 +6,8 @@ import org.julakali.powertrip.shared.domain.usecases.UpdateChargeFiltersInteract
 import org.julakali.powertrip.shared.domain.usecases.UpdateNetworksInteractor
 import org.julakali.powertrip.shared.domain.usecases.SetChargeModeInteractor
 import org.julakali.powertrip.shared.domain.ChargeMode
+import org.julakali.powertrip.shared.domain.NavigationApp
+import org.julakali.powertrip.shared.domain.usecases.SetNavigationAppInteractor
 import org.julakali.powertrip.shared.settings.InMemoryPreferencesDataStore
 import org.julakali.powertrip.shared.settings.DataStorePreferencesRepository
 import org.julakali.powertrip.shared.testVehicleRepository
@@ -62,12 +64,24 @@ class DrawerViewModelTest {
         assertEquals(ChargeMode.NORMAL, vm.uiState.await { it.mode == ChargeMode.NORMAL }.mode)
     }
 
+    @Test
+    fun `trips go to Apple Maps until another app is picked`() = runBlocking<Unit> {
+        val preferences = DataStorePreferencesRepository(InMemoryPreferencesDataStore())
+        val vm = viewModel(preferences)
+        assertEquals(NavigationApp.APPLE_MAPS, vm.uiState.await { true }.navigationApp)
+
+        vm.onNavigationAppSelected(NavigationApp.GOOGLE_MAPS)
+        assertEquals(NavigationApp.GOOGLE_MAPS, vm.uiState.await { it.navigationApp == NavigationApp.GOOGLE_MAPS }.navigationApp)
+        assertEquals(NavigationApp.GOOGLE_MAPS, preferences.navigationApp.first())
+    }
+
     private fun viewModel(preferences: DataStorePreferencesRepository) = main.track(
         DrawerViewModel(
             testVehicleRepository(),
             preferences,
             UpdateChargeFiltersInteractor(preferences),
             SetChargeModeInteractor(preferences, UpdateChargeFiltersInteractor(preferences), UpdateNetworksInteractor(preferences)),
+            SetNavigationAppInteractor(preferences),
         ),
     )
 

@@ -28,6 +28,7 @@ final class PhoneSession: ObservableObject {
     let search: SearchViewModel
     let activeRoute: ActiveRouteViewModel
     let chargeNow: ChargeNowViewModel
+    let settings: DrawerViewModel
     let phoneApp: PhoneAppViewModel
 
     init() {
@@ -39,6 +40,7 @@ final class PhoneSession: ObservableObject {
         search = viewModels.search()
         activeRoute = viewModels.activeRoute()
         chargeNow = viewModels.chargeNow()
+        settings = viewModels.drawer()
         phoneApp = viewModels.phoneApp()
     }
 }
@@ -92,6 +94,7 @@ struct PhoneRoot: View {
     @State private var alert: PhoneAlert?
     @State private var command: CameraCommand?
     @State private var tripDetent: PresentationDetent = TripSheetDetents.peek
+    @State private var navigationApp: NavigationApp = .appleMaps
 
     init() {
         let session = PhoneSession()
@@ -136,6 +139,7 @@ struct PhoneRoot: View {
                 trip: trip,
                 committed: committed,
                 onPage: onPage,
+            handoffApp: handoffApp,
                 navigation: $overlay,
                 alert: $alert
             ))
@@ -148,6 +152,11 @@ struct PhoneRoot: View {
         }
         .tint(Brand.primary)
         .task { await collectTripEvents() }
+        .task {
+            for await settings in session.settings.uiState {
+                navigationApp = settings.navigationApp
+            }
+        }
         .task { await collectActiveRouteEvents() }
         .task {
             for await event in session.phoneApp.event {
@@ -178,7 +187,7 @@ struct PhoneRoot: View {
                         stopOpened: { session.home.onSiteSelected(site: $0.site) },
                         sentToMaps: {
                             guard let planned = sheet as? TripUiStatePlanned else { return }
-                            openInMaps(planned.mapsUrl) { opened in
+                            openInMaps(planned.mapsUrl(app: handoffApp)) { opened in
                                 if opened { model.commit() } else { alert = .message(localized("phone_detail_no_navigation")) }
                             }
                             model.onSectionSent()
@@ -199,6 +208,7 @@ struct PhoneRoot: View {
             trip: trip,
             committed: committed,
             onPage: false,
+            handoffApp: handoffApp,
             navigation: $overlay,
             alert: $alert
         ))
@@ -214,7 +224,7 @@ struct PhoneRoot: View {
             pointPicked: { activeRoute.onSectionPointPicked(index: Int32($0)) },
             stopOpened: { session.home.onSiteSelected(site: $0.site) },
             sentToMaps: {
-                if let url = committed.mapsUrl {
+                if let url = committed.mapsUrl(app: handoffApp) {
                     openInMaps(url) { opened in
                         if !opened { alert = .message(localized("phone_detail_no_navigation")) }
                     }
@@ -222,6 +232,10 @@ struct PhoneRoot: View {
                 activeRoute.onSectionSent()
             }
         )
+    }
+
+    private var handoffApp: NavigationApp {
+        navigationApp.available(googleMapsInstalled: googleMapsInstalled())
     }
 
     // MARK: Events
@@ -376,6 +390,7 @@ private struct PhoneOverlays: ViewModifier {
     let trip: TripUiState
     let committed: ActiveRouteUiState
     let onPage: Bool
+    let handoffApp: NavigationApp
     @Binding var navigation: PhoneOverlay?
     @Binding var alert: PhoneAlert?
 
@@ -518,7 +533,7 @@ private struct PhoneOverlays: ViewModifier {
     }
 
     private func openNavigation(to position: LatLon) {
-        openInMaps(MapsHandoff.shared.navigateUrl(target: position)) { opened in
+        openInMaps(MapsHandoff.shared.navigateUrl(target: position, app: handoffApp)) { opened in
             if !opened { alert = .message(localized("phone_detail_no_navigation")) }
         }
     }
@@ -544,4 +559,10 @@ func openInMaps(_ url: String, completion: @escaping (Bool) -> Void = { _ in }) 
         return
     }
     UIApplication.shared.open(parsed, options: [:], completionHandler: completion)
+}
+
+/// Google Maps can take a hand-off only while it is installed; asking needs `comgooglemaps` in LSApplicationQueriesSchemes.
+func googleMapsInstalled() -> Bool {
+    guard let scheme = URL(string: "comgooglemaps://") else { return false }
+    return UIApplication.shared.canOpenURL(scheme)
 }

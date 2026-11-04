@@ -10,6 +10,7 @@ import org.julakali.powertrip.shared.domain.usecases.PlanTripInteractor
 import org.julakali.powertrip.shared.domain.VehicleRepository
 import org.julakali.powertrip.shared.domain.usecases.CommitTripInteractor
 import org.julakali.powertrip.shared.domain.TripPlan
+import org.julakali.powertrip.shared.domain.NavigationApp
 import org.julakali.powertrip.shared.domain.mapsUrl
 import org.julakali.powertrip.shared.domain.SectionSelection
 import org.julakali.powertrip.shared.domain.TripPlanResult
@@ -66,6 +67,8 @@ sealed interface TripUiState {
 
         /** What "An Maps senden" hands over: the picked section, or the whole trip. */
         val mapsUrl: String get() = plan.mapsUrl(startPosition, selection)
+
+        fun mapsUrl(app: NavigationApp): String = plan.mapsUrl(startPosition, selection, app)
     }
 
     data class Unreachable(

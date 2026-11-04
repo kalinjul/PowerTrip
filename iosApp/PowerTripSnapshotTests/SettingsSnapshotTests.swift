@@ -6,23 +6,33 @@ import XCTest
 @MainActor
 final class SettingsSnapshotTests: XCTestCase {
 
-    private func settings(mode: ChargeMode = .normal, networks: Int32 = 3) -> some View {
+    private func settings(
+        mode: ChargeMode = .normal,
+        networks: Int32 = 3,
+        navigationApp: NavigationApp = .appleMaps
+    ) -> some View {
         NavigationStack {
             SettingsContent(
                 state: DrawerUiState(
                     vehicleName: "VW ID.3",
                     preferredNetworkCount: networks,
                     filters: ChargeFilters(minPowerKw: 150, slowMode: mode == .ac),
-                    mode: mode
+                    mode: mode,
+                    navigationApp: navigationApp
                 ),
                 onMinPower: { _ in },
-                onMode: { _ in }
+                onMode: { _ in },
+                onNavigationApp: { _ in }
             )
         }
     }
 
     func testModesOff() {
         assertLightAndDark(settings(), named: "settings", frame: .phone)
+    }
+
+    func testGoogleMapsPicked() {
+        assertLightAndDark(settings(navigationApp: .googleMaps), named: "settings", frame: .phone)
     }
 
     func testAcModeOn() {

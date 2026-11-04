@@ -102,9 +102,14 @@ interface PreferencesRepository {
     /** Hard limits for the phone flows (planning, "charge now"). */
     val chargeFilters: Flow<ChargeFilters>
 
+    /** Where iOS hands a trip off to; [NavigationApp.APPLE_MAPS] until the driver picks. */
+    val navigationApp: Flow<NavigationApp>
+
     suspend fun setNetworks(preferences: NetworkPreferences)
 
     suspend fun setChargeFilters(filters: ChargeFilters)
+
+    suspend fun setNavigationApp(app: NavigationApp)
 }
 
 interface DestinationHistory {

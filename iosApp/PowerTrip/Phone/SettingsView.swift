@@ -29,7 +29,8 @@ struct SettingsView: View {
                 SettingsContent(
                     state: state,
                     onMinPower: { drawer.onFiltersChanged(filters: state.filters.doCopy(minPowerKw: $0, slowMode: state.filters.slowMode)) },
-                    onMode: { drawer.onModeSelected(target: $0) }
+                    onMode: { drawer.onModeSelected(target: $0) },
+                    onNavigationApp: { drawer.onNavigationAppSelected(app: $0) }
                 )
             }
             .navigationDestination(for: SettingsPage.self) { page in
@@ -50,6 +51,7 @@ struct SettingsContent: View {
     let state: DrawerUiState
     let onMinPower: (Double) -> Void
     let onMode: (ChargeMode) -> Void
+    let onNavigationApp: (NavigationApp) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var explainingModes = false
@@ -103,6 +105,18 @@ struct SettingsContent: View {
                             .presentationCompactAdaptation(.popover)
                     }
                 }
+            }
+            Section {
+                Picker(selection: Binding(get: { state.navigationApp }, set: onNavigationApp)) {
+                    Text(localized("navigation_app_apple_maps")).tag(NavigationApp.appleMaps)
+                    Text(localized("navigation_app_google_maps")).tag(NavigationApp.googleMaps)
+                } label: {
+                    NavigationRowLabel(systemImage: "arrow.triangle.turn.up.right.diamond", title: localized("drawer_navigation_app"))
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("navigation-app")
+            } header: {
+                Text(localized("drawer_navigation"))
             }
             Section {
                 NavigationLink(value: SettingsPage.legal) {

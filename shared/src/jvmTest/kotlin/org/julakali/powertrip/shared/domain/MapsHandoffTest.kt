@@ -21,6 +21,35 @@ class MapsHandoffTest {
     }
 
     @Test
+    fun `apple maps link carries destination and every waypoint in order`() {
+        val url = MapsHandoff.appleDirectionsUrl(
+            destination = LatLon(48.14, 11.58),
+            waypoints = listOf(LatLon(52.1, 9.95), LatLon(51.3, 9.45)),
+        )
+        assertEquals(
+            "https://maps.apple.com/directions?destination=48.14%2C11.58" +
+                "&waypoint=52.1%2C9.95&waypoint=51.3%2C9.45&mode=driving",
+            url,
+        )
+    }
+
+    @Test
+    fun `the google hand-off is the directions url from the current position`() {
+        val waypoints = listOf(LatLon(51.47, 6.85))
+        assertEquals(
+            MapsHandoff.directionsUrl(origin = null, destination = LatLon(48.14, 11.58), waypoints = waypoints),
+            MapsHandoff.handoffUrl(NavigationApp.GOOGLE_MAPS, LatLon(48.14, 11.58), waypoints),
+        )
+    }
+
+    @Test
+    fun `google maps falls back to apple maps when it is not installed`() {
+        assertEquals(NavigationApp.APPLE_MAPS, NavigationApp.GOOGLE_MAPS.available(googleMapsInstalled = false))
+        assertEquals(NavigationApp.GOOGLE_MAPS, NavigationApp.GOOGLE_MAPS.available(googleMapsInstalled = true))
+        assertEquals(NavigationApp.APPLE_MAPS, NavigationApp.APPLE_MAPS.available(googleMapsInstalled = true))
+    }
+
+    @Test
     fun `without origin Maps uses the current position`() {
         val url = MapsHandoff.navigateUrl(LatLon(48.14, 11.58))
         assertFalse("origin=" in url)

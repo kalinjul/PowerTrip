@@ -88,8 +88,10 @@ interface VehicleRepository {
 interface PreferencesRepository {
     val networks: Flow<NetworkPreferences>
     val chargeFilters: Flow<ChargeFilters>        // phone flows: min power, max distance; slowMode is not persisted
+    val navigationApp: Flow<NavigationApp>        // iOS hand-offs only; Apple Maps until the driver picks
     suspend fun setNetworks(preferences: NetworkPreferences)
     suspend fun setChargeFilters(filters: ChargeFilters)
+    suspend fun setNavigationApp(app: NavigationApp)
 }
 interface DestinationHistory {
     val recentDestinations: Flow<List<Destination>>

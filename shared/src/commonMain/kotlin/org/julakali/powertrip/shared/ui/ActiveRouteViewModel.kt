@@ -15,6 +15,7 @@ import org.julakali.powertrip.shared.combine
 import org.julakali.powertrip.shared.domain.Destination
 import org.julakali.powertrip.shared.domain.CommittedTrip
 import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.NavigationApp
 import org.julakali.powertrip.shared.domain.mapsUrl
 import org.julakali.powertrip.shared.domain.SectionSelection
 import org.julakali.powertrip.shared.domain.VehicleRepository
@@ -43,6 +44,8 @@ data class ActiveRouteUiState(
 
     /** What "An Maps senden" hands over: the picked section, or the whole trip. */
     val mapsUrl: String? get() = trip?.plan?.mapsUrl(startPosition, selection)
+
+    fun mapsUrl(app: NavigationApp): String? = trip?.plan?.mapsUrl(startPosition, selection, app)
 }
 
 sealed interface ActiveRouteEvent {

@@ -34,7 +34,11 @@ data class SectionSelection(
  * origin stays "my location", since Maps only previews a fixed one; the
  * section's first point becomes a waypoint instead.
  */
-fun TripPlan.mapsUrl(startPosition: LatLon?, selection: SectionSelection): String {
+fun TripPlan.mapsUrl(
+    startPosition: LatLon?,
+    selection: SectionSelection,
+    app: NavigationApp = NavigationApp.GOOGLE_MAPS,
+): String {
     val last = stops.size + 1
     fun point(index: Int): LatLon? = when (index) {
         0 -> startPosition ?: route.points.firstOrNull()
@@ -44,8 +48,8 @@ fun TripPlan.mapsUrl(startPosition: LatLon?, selection: SectionSelection): Strin
     val a = selection.a
     val b = selection.b
     val (from, to) = if (selection.selecting && a != null && b != null) minOf(a, b) to maxOf(a, b) else 0 to last
-    return MapsHandoff.directionsUrl(
-        origin = null,
+    return MapsHandoff.handoffUrl(
+        app = app,
         destination = point(to) ?: destination.position,
         waypoints = (maxOf(from, 1) until to).mapNotNull(::point),
     )

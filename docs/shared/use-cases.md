@@ -42,4 +42,4 @@ class RefreshNetworksInteractor : Interactor<Unit, Unit>
 ```
 
 The list is an overview, not complete; the settings writes
-(`Update…Interactor`) and `SetChargeModeInteractor` sit in the same package.
+(`Update…Interactor`), `SetChargeModeInteractor` and `SetNavigationAppInteractor` sit in the same package.

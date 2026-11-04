@@ -37,6 +37,14 @@ class TripMapsUrlTest {
     }
 
     @Test
+    fun appleMaps_getsTheSameStopsAsWaypoints() {
+        assertEquals(
+            MapsHandoff.appleDirectionsUrl(destination = munich, waypoints = listOf(stopA, stopB)),
+            plan.mapsUrl(start, SectionSelection(), NavigationApp.APPLE_MAPS),
+        )
+    }
+
+    @Test
     fun aHalfPickedSection_sendsTheWholeTrip() {
         val selection = SectionSelection(selecting = true).picked(1)
         assertEquals(plan.mapsUrl(start, SectionSelection()), plan.mapsUrl(start, selection))

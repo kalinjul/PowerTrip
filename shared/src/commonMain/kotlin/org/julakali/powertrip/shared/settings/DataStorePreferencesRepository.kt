@@ -8,9 +8,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.serialization.Serializable
 import org.julakali.powertrip.shared.domain.ChargeFilters
+import org.julakali.powertrip.shared.domain.NavigationApp
 import org.julakali.powertrip.shared.domain.NetworkPreferences
 import org.julakali.powertrip.shared.domain.PreferencesRepository
 import org.julakali.powertrip.shared.settings.SettingsKeys.CHARGE_FILTERS
+import org.julakali.powertrip.shared.settings.SettingsKeys.NAVIGATION_APP
 import org.julakali.powertrip.shared.settings.SettingsKeys.ONLY_PREFERRED
 import org.julakali.powertrip.shared.settings.SettingsKeys.PREFERRED_NETWORKS
 
@@ -38,6 +40,12 @@ class DataStorePreferencesRepository(
         slowMode,
     ) { stored, slowMode -> stored.copy(slowMode = slowMode) }
 
+    override val navigationApp: Flow<NavigationApp> = dataStore.read { preferences ->
+        preferences.getStringOrNull(NAVIGATION_APP)
+            ?.let { stored -> NavigationApp.entries.firstOrNull { it.name == stored } }
+            ?: NavigationApp.APPLE_MAPS
+    }
+
     override suspend fun setNetworks(preferences: NetworkPreferences) {
         dataStore.edit {
             it.putString(ONLY_PREFERRED, preferences.onlyPreferred.toString())
@@ -48,6 +56,10 @@ class DataStorePreferencesRepository(
     override suspend fun setChargeFilters(filters: ChargeFilters) {
         dataStore.edit { it.putJson(CHARGE_FILTERS, StoredFilters(filters.minPowerKw)) }
         slowMode.value = filters.slowMode
+    }
+
+    override suspend fun setNavigationApp(app: NavigationApp) {
+        dataStore.edit { it.putString(NAVIGATION_APP, app.name) }
     }
 
     @Serializable

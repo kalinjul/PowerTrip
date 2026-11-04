@@ -21,11 +21,12 @@ internal object SettingsKeys {
     const val CHARGE_FILTERS = "filters.charge"
     const val COMMITTED_TRIP = "trip.committed"
     const val CAR_DEBUG = "car.debugData"
+    const val NAVIGATION_APP = "navigation.app"
 
     /** Every key ever written to the settings; what a migration copies. */
     val ALL: Set<String> = setOf(
         DESTINATIONS, SOC_DIAGNOSTICS, ONLY_PREFERRED, PREFERRED_NETWORKS,
-        MANUAL_SOC, ARRIVAL_SOC, CHARGE_FILTERS, COMMITTED_TRIP, CAR_DEBUG,
+        MANUAL_SOC, ARRIVAL_SOC, CHARGE_FILTERS, COMMITTED_TRIP, CAR_DEBUG, NAVIGATION_APP,
     )
 }
 

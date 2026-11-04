@@ -185,6 +185,10 @@
     <string name="drawer_about">About PowerTrip</string>
     <string name="drawer_legal">Legal notice &amp; privacy</string>
     <string name="drawer_licenses">Licenses</string>
+    <string name="drawer_navigation">Navigation</string>
+    <string name="drawer_navigation_app">Open routes in</string>
+    <string name="navigation_app_apple_maps">Apple Maps</string>
+    <string name="navigation_app_google_maps">Google Maps</string>
     <string name="drawer_car_none">No car added</string>
 
     <!-- Phone: about -->
