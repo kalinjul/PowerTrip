@@ -56,12 +56,6 @@ struct SettingsContent: View {
 
     var body: some View {
         List {
-            Section {
-                BrandHead()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 8, trailing: 0))
-            }
             Section(localized("drawer_preferences")) {
                 NavigationLink(value: SettingsPage.garage) {
                     NavigationRowLabel(systemImage: "car", title: localized("drawer_car"), subtitle: state.vehicleName ?? localized("drawer_car_none"))
@@ -110,13 +104,19 @@ struct SettingsContent: View {
                     }
                 }
             }
-            Section(localized("drawer_about")) {
+            Section {
                 NavigationLink(value: SettingsPage.legal) {
                     NavigationRowLabel(systemImage: "info.circle", title: localized("drawer_legal"))
                 }
                 NavigationLink(value: SettingsPage.licenses) {
                     NavigationRowLabel(systemImage: "doc.text", title: localized("drawer_licenses"))
                 }
+            } header: {
+                Text(localized("drawer_about"))
+            } footer: {
+                BrandSignature()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 28)
             }
         }
         .navigationTitle(localized("home_settings"))

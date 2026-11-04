@@ -71,14 +71,16 @@ struct RankBadge: View {
     }
 }
 
-/// The brand mark and wordmark, as on Android's drawer head.
-struct BrandHead: View {
+/// The brand mark and wordmark, small and grey, signing off the settings like a copyright line.
+struct BrandSignature: View {
     var body: some View {
-        HStack(spacing: 14) {
-            Image("PowertripMark").resizable().scaledToFit().frame(height: 24)
-            Image("PowertripWordmark").resizable().scaledToFit().frame(height: 32)
+        HStack(spacing: 8) {
+            Image("PowertripMark").resizable().scaledToFit().frame(height: 12)
+            Image("PowertripWordmark").resizable().scaledToFit().frame(height: 16)
                 .accessibilityLabel(localized("app_name"))
         }
+        .saturation(0)
+        .opacity(0.55)
     }
 }
 
