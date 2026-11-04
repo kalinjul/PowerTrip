@@ -61,7 +61,9 @@ udid() {
 boot() {
   # Booting a booted device fails; that's fine.
   xcrun simctl boot "$1" 2>/dev/null || true
-  open -a Simulator --args -CurrentDeviceUDID "$1"
+  # Xcode 27 replaced Simulator.app with DeviceHub.
+  open -a Simulator --args -CurrentDeviceUDID "$1" 2>/dev/null \
+    || open -b com.apple.dt.Devices --args -CurrentDeviceUDID "$1"
   xcrun simctl bootstatus "$1" -b >/dev/null
 }
 
