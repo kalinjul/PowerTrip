@@ -265,7 +265,7 @@ private struct ModeGlow: View {
             Rectangle()
                 .strokeBorder(Brand.mode(mode), lineWidth: 18)
                 .blur(radius: 14)
-                .phaseAnimator([0.75, 1.0]) { glow, breath in
+                .phaseAnimator([0.56, 0.75]) { glow, breath in
                     glow.opacity(breath)
                 } animation: { _ in
                     .easeInOut(duration: 1.8)
