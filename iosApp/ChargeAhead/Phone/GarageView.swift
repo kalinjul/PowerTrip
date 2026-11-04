@@ -61,9 +61,12 @@ struct GarageContent: View {
             } else if let selected = state.selected {
                 Section {
                     CarPager(vehicles: state.vehicles, selected: selected, fullRangeKm: state.fullRangeKm, onSelect: actions.vehicleSelected)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 16, trailing: 0))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
                         .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listSectionSeparator(.hidden)
                 }
+                .modifier(EdgeToEdgeSection())
                 Section {
                     NavigationLink(value: SettingsPage.vehicle) {
                         LevelRowLabel(systemImage: "slider.horizontal.3", title: localized("garage_vehicle_row"), supporting: localized("garage_vehicle_row_hint"))
@@ -156,17 +159,22 @@ private struct CarPager: View {
 
     @State private var shownId: String?
 
-    private static let peek: CGFloat = 16
+    /// The cards line up with the rows below; the neighbours peek into the margin.
+    private static let inset: CGFloat = 16
+    private static let gap: CGFloat = 6
 
     var body: some View {
-        let several = vehicles.count > 1
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 8) {
+            LazyHStack(spacing: Self.gap) {
                 ForEach(vehicles, id: \.id) { vehicle in
                     CarCard(vehicle: vehicle, fullRangeKm: fullRangeKm[vehicle.id]?.doubleValue)
                         .accessibilityElement(children: .combine)
-                        .containerRelativeFrame(.horizontal) { width, _ in
-                            width - (several ? Self.peek : 0)
+                        .containerRelativeFrame(.horizontal)
+                        // The neighbours shrink towards the shown card and fade, so a swipe glides instead of jumping.
+                        .scrollTransition(.interactive, axis: .horizontal) { card, phase in
+                            card
+                                .scaleEffect(1 - 0.08 * abs(phase.value), anchor: phase.value < 0 ? .trailing : .leading)
+                                .opacity(1 - 0.4 * abs(phase.value))
                         }
                         .accessibilityIdentifier("vehicle")
                         .accessibilityAddTraits(vehicle.id == selected.id ? .isSelected : [])
@@ -174,7 +182,10 @@ private struct CarPager: View {
             }
             .scrollTargetLayout()
         }
-        .scrollTargetBehavior(.viewAligned)
+        .contentMargins(.horizontal, Self.inset, for: .scrollContent)
+        // Room for the card's shadow, which the list row would otherwise cut off.
+        .contentMargins(.vertical, 12, for: .scrollContent)
+        .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
         .scrollPosition(id: $shownId)
         .scrollClipDisabled()
         .onAppear { shownId = selected.id }
@@ -184,6 +195,17 @@ private struct CarPager: View {
         .onChange(of: shownId) { _, id in
             guard let id, id != selected.id, let vehicle = vehicles.first(where: { $0.id == id }) else { return }
             onSelect(vehicle)
+        }
+    }
+}
+
+/// A list row clips what it draws, so the pager's row has to reach the screen's edges for a neighbour to peek.
+private struct EdgeToEdgeSection: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.listSectionMargins(.horizontal, 0)
+        } else {
+            content
         }
     }
 }
@@ -220,8 +242,12 @@ private struct CarCard: View {
         .foregroundStyle(Brand.onPrimaryContainer)
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Brand.primaryContainer, in: RoundedRectangle(cornerRadius: 24))
-        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        .background {
+            // On the shape alone: on the whole card, every label would cast its own shadow.
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Brand.primaryContainer)
+                .shadow(color: .black.opacity(0.10), radius: 5, y: 2)
+        }
     }
 
     private struct Stat: View {
