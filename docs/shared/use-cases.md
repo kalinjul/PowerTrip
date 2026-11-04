@@ -1,6 +1,6 @@
 # Use cases
 
-Business logic lives in `org.julakali.chargeahead.shared.domain.usecases`,
+Business logic lives in `org.julakali.powertrip.shared.domain.usecases`,
 as `Interactor` (a one-shot action) or `SubjectInteractor` (an observer,
 `XObserver`). They are Koin factories in `chargeStopsModule()`; ViewModels
 only wire them up, and Swift goes through the bridges in `iosMain`. An
@@ -42,4 +42,4 @@ class RefreshNetworksInteractor : Interactor<Unit, Unit>
 ```
 
 The list is an overview, not complete; the settings writes
-(`Update…Interactor`) and `SetChargeModeInteractor` sit in the same package.
+(`Update…Interactor`), `SetChargeModeInteractor` and `SetNavigationAppInteractor` sit in the same package.

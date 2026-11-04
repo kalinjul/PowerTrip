@@ -1,0 +1,114 @@
+package org.julakali.powertrip.android.car
+
+import android.Manifest
+import android.app.Application
+import androidx.car.app.model.GridItem
+import androidx.car.app.model.GridTemplate
+import androidx.car.app.model.MessageTemplate
+import androidx.test.core.app.ApplicationProvider
+import org.julakali.powertrip.android.car.CarTestGraph.Companion.click
+import org.julakali.powertrip.android.car.CarTestGraph.Companion.plan
+import org.julakali.powertrip.android.car.CarTestGraph.Companion.settle
+import org.julakali.powertrip.android.phone.R
+import org.julakali.powertrip.shared.domain.EnergyState
+import org.julakali.powertrip.shared.domain.SoCSourceKind
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import org.julakali.powertrip.shared.resources.Res
+import org.julakali.powertrip.shared.resources.car_home_active_route
+import org.julakali.powertrip.shared.resources.car_home_charge_now
+import org.julakali.powertrip.shared.resources.car_home_enter_destination
+import org.julakali.powertrip.shared.resources.car_home_soc
+import org.julakali.powertrip.shared.resources.car_home_soc_percent
+import org.julakali.powertrip.shared.resources.car_home_soc_unset
+import org.julakali.powertrip.shared.resources.car_permission_message
+import org.julakali.powertrip.shared.Texts
+import org.jetbrains.compose.resources.StringResource
+
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class CarHomeScreenTest {
+
+    private var graph: CarTestGraph? = null
+
+    private fun graph(energy: EnergyState? = null, located: Boolean = true): CarTestGraph {
+        if (located) {
+            shadowOf(ApplicationProvider.getApplicationContext<Application>())
+                .grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        return CarTestGraph(energy = energy).also { graph = it }
+    }
+
+    @After
+    fun stopGraph() {
+        graph?.close()
+    }
+
+    private fun string(resource: StringResource, vararg args: Any) = Texts.string(resource, *args)
+
+    private fun CarTestGraph.tiles(): List<GridItem> {
+        val screen = CarHomeScreen(carContext, feature, session, permissions)
+        settle()
+        return (screen.onGetTemplate() as GridTemplate).singleList!!.items.map { it as GridItem }
+    }
+
+    @Test
+    fun `the tiles are destination, charge now and the level, which reads unset without one`() {
+        val tiles = graph().tiles()
+
+        assertEquals(
+            listOf(Res.string.car_home_enter_destination, Res.string.car_home_charge_now, Res.string.car_home_soc).map(::string),
+            tiles.map { it.title.toString() },
+        )
+        assertEquals(string(Res.string.car_home_soc_unset), tiles.last().text.toString())
+        assertEquals(R.drawable.ic_battery_0, tiles.last().image!!.icon!!.resId)
+    }
+
+    @Test
+    fun `the level tile shows the percent the feature knows`() {
+        val tiles = graph(energy = EnergyState(63.0, SoCSourceKind.MANUAL, 0L)).tiles()
+
+        assertEquals(string(Res.string.car_home_soc_percent, 63), tiles.last().text.toString())
+        assertEquals(R.drawable.ic_battery_60, tiles.last().image!!.icon!!.resId)
+    }
+
+    @Test
+    fun `a committed trip gets a tile and takes over the screen`() {
+        val graph = graph()
+        graph.withVehicle()
+        graph.withCommittedTrip(plan(stops = 1))
+
+        val tiles = graph.tiles()
+
+        assertEquals(string(Res.string.car_home_active_route), tiles.first().title.toString())
+        assertEquals("München", tiles.first().text.toString())
+        assertTrue(graph.screens.screensPushed.single() is CarRouteScreen)
+    }
+
+    @Test
+    fun `tapping a tile opens its screen`() {
+        val graph = graph()
+
+        click(graph.tiles()[1])
+
+        assertTrue(graph.screens.screensPushed.last() is CarChargeNowScreen)
+    }
+
+    @Test
+    fun `without the location permission the screen asks for it`() {
+        val graph = graph(located = false)
+        val screen = CarHomeScreen(graph.carContext, graph.feature, graph.session, graph.permissions)
+        settle()
+
+        val template = screen.onGetTemplate() as MessageTemplate
+
+        assertEquals(string(Res.string.car_permission_message), template.message.toString())
+        assertTrue(graph.screens.screensPushed.isEmpty())
+    }
+}

@@ -1,0 +1,32 @@
+package org.julakali.powertrip.shared.domain.usecases
+
+import org.julakali.powertrip.shared.domain.AppCoroutineDispatchers
+import org.julakali.powertrip.shared.domain.BoundingBox
+import org.julakali.powertrip.shared.domain.ChargePointStatusRepository
+import org.julakali.powertrip.shared.domain.Interactor
+import org.julakali.powertrip.shared.domain.PreferencesRepository
+import org.julakali.powertrip.shared.domain.SiteRepository
+import org.julakali.powertrip.shared.domain.mapChargersIn
+import org.julakali.powertrip.shared.domain.mapFilter
+import kotlinx.coroutines.flow.first
+
+/**
+ * Refills the live availability of the chargers the map shows for a
+ * viewport. [MapChargersObserver] picks it up from the status store's flow.
+ */
+class RefreshChargerAvailabilityInteractor(
+    private val repository: SiteRepository,
+    private val statusRepository: ChargePointStatusRepository,
+    private val preferences: PreferencesRepository,
+    private val dispatchers: AppCoroutineDispatchers,
+) : Interactor<RefreshChargerAvailabilityInteractor.Params, Unit>() {
+
+    data class Params(val viewport: BoundingBox)
+
+    override suspend fun doWork(params: Params) {
+        val filter = preferences.mapFilter().first()
+        val chargers = repository.mapChargersIn(params.viewport, filter, dispatchers.computation).first()
+        val ids = chargers.mapNotNull { it.site.liveStatusId }
+        if (ids.isNotEmpty()) statusRepository.refresh(ids)
+    }
+}

@@ -1,4 +1,4 @@
-# ChargeAhead — Roadmap
+# PowerTrip — Roadmap
 
 What is built, what comes next, and which questions are still open.
 Design and platform constraints live in **[ARCHITECTURE.md](ARCHITECTURE.md)**;
@@ -148,7 +148,7 @@ Still open:
    needs no app release. The price is still maintenance: a wrong preset
    value is worse than none, because nobody checks it.
 5. **Server: in place.** Routes, destination search, charge sites, live
-   status and the vehicle catalog all come from the ChargeAhead backend. The
+   status and the vehicle catalog all come from the PowerTrip backend. The
    app carries no routing engine of its own and talks to no third-party
    service for any of them; the provider keys live in the backend.
 
@@ -162,7 +162,7 @@ Still open:
    Google before any release** — that is a backend setting, nothing in the
    app changes with it.
 
-6. **Destination search via the backend.** The app asks the ChargeAhead
+6. **Destination search via the backend.** The app asks the PowerTrip
    backend (`GET /v1/places`) and no geocoder directly; the `Geocoder`
    interface has that one implementation. Behind it the backend runs Photon,
    with no alternative provider.

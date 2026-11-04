@@ -1,13 +1,13 @@
 ---
 name: interactors
-description: The domain-layer use-case pattern this repository uses — Interactor (one-shot action) and SubjectInteractor (observer, "XObserver") from Tivi, in org.julakali.chargeahead.shared.domain.usecases. Always use this skill when writing or changing a use case, interactor or observer; when a ViewModel calls ChargeStopsFeature or a repository directly, or runs its own mapLatest/flatMapLatest pipeline over settings; when business logic (filtering, ranking, selecting) sits in a ViewModel or a feature class; and when wiring an interactor into Koin or a ViewModel's combine(). Also when someone asks where business logic belongs or how to test it without a ViewModel.
+description: The domain-layer use-case pattern this repository uses — Interactor (one-shot action) and SubjectInteractor (observer, "XObserver") from Tivi, in org.julakali.powertrip.shared.domain.usecases. Always use this skill when writing or changing a use case, interactor or observer; when a ViewModel calls ChargeStopsFeature or a repository directly, or runs its own mapLatest/flatMapLatest pipeline over settings; when business logic (filtering, ranking, selecting) sits in a ViewModel or a feature class; and when wiring an interactor into Koin or a ViewModel's combine(). Also when someone asks where business logic belongs or how to test it without a ViewModel.
 ---
 
 # Interactors and observers
 
 Business logic the phone UI needs lives in **use cases in `shared` →
 `domain.usecases`**, built on the two base classes in
-`shared/src/commonMain/kotlin/org/julakali/chargeahead/shared/domain/Interactor.kt`
+`shared/src/commonMain/kotlin/org/julakali/powertrip/shared/domain/Interactor.kt`
 (taken from [Tivi](https://github.com/chrisbanes/tivi/blob/main/domain/src/commonMain/kotlin/app/tivi/domain/Interactor.kt)).
 The ViewModel wires them together; it does not select, filter or fetch
 itself.
@@ -23,7 +23,7 @@ The worked example is `MapChargersObserver`, used by `HomeViewModel`.
 
 ## The rules
 
-1. **Domain only.** A use case lives in `org.julakali.chargeahead.shared.domain.usecases`
+1. **Domain only.** A use case lives in `org.julakali.powertrip.shared.domain.usecases`
    and depends on repositories and data sources (`SiteRepository`, `PreferencesRepository`,
    `ChargePointStatusSource`, …) and domain types. Never on
    `ChargeStopsFeature`, `core`, `data` or `ui`. Constants, models and

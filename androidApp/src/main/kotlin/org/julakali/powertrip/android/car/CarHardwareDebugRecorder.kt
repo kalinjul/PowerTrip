@@ -1,0 +1,242 @@
+package org.julakali.powertrip.android.car
+
+import androidx.annotation.OptIn
+import androidx.car.app.CarContext
+import androidx.car.app.annotations.ExperimentalCarApi
+import androidx.car.app.hardware.CarHardwareManager
+import androidx.car.app.hardware.common.CarValue
+import androidx.car.app.hardware.common.OnCarDataAvailableListener
+import androidx.car.app.hardware.info.CarInfo
+import androidx.car.app.hardware.info.EnergyLevel
+import androidx.car.app.hardware.info.EnergyProfile
+import androidx.car.app.hardware.info.EvStatus
+import androidx.car.app.hardware.info.Mileage
+import androidx.car.app.hardware.info.Model
+import androidx.car.app.hardware.info.Speed
+import androidx.core.content.ContextCompat
+import org.julakali.powertrip.shared.childScope
+import org.julakali.powertrip.shared.domain.AppCoroutineDispatchers
+import org.julakali.powertrip.shared.domain.CarDataKind
+import org.julakali.powertrip.shared.domain.CarDataPoint
+import org.julakali.powertrip.shared.domain.CarDataStatus
+import org.julakali.powertrip.shared.domain.CarDiagnosticsRepository
+import org.julakali.powertrip.shared.domain.TimeProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
+import java.util.concurrent.Executor
+import kotlin.math.roundToInt
+
+/** Captures everything the car hardware offers and persists it for the phone's debug view. */
+@OptIn(ExperimentalCarApi::class)
+class CarHardwareDebugRecorder(
+    private val carContext: CarContext,
+    private val time: TimeProvider,
+    private val permissions: CarPermissions,
+    /** Shared with the SoC source. */
+    private val energyLevels: CarEnergyLevels,
+    private val diagnostics: CarDiagnosticsRepository,
+    /** Each [start] runs in a child of it that [stop] cancels. */
+    private val parentScope: CoroutineScope,
+    private val dispatchers: AppCoroutineDispatchers,
+) {
+
+    private var carInfo: CarInfo? = null
+    private var speedListener: OnCarDataAvailableListener<Speed>? = null
+    private var mileageListener: OnCarDataAvailableListener<Mileage>? = null
+    private var evStatusListener: OnCarDataAvailableListener<EvStatus>? = null
+
+    // Writes go here, off the host's main-thread callbacks; cancelled in stop().
+    private var scope: CoroutineScope? = null
+
+    fun start() {
+        val newScope = parentScope.childScope()
+        scope = newScope
+        val info = try {
+            carContext.getCarService(CarHardwareManager::class.java).carInfo
+        } catch (unavailable: Exception) {
+            CarDataKind.entries.forEach { record(it, CarDataStatus.NO_CAR_HARDWARE) }
+            return
+        }
+        carInfo = info
+        val executor = ContextCompat.getMainExecutor(carContext)
+
+        // One-shot values: no permission required.
+        info.fetchModel(executor) { model -> record(CarDataKind.MODEL, model.toPoint()) }
+        info.fetchEnergyProfile(executor) { profile ->
+            record(CarDataKind.ENERGY_PROFILE, profile.toPoint())
+        }
+
+        newScope.launch(dispatchers.main) {
+            energyLevels.readings.collect(::recordEnergy)
+        }
+
+        evStatusListener = listenForEvStatus(info, executor)
+
+        // Re-register on every permission change.
+        newScope.launch(dispatchers.main) {
+            combine(permissions.granted(PERMISSION_SPEED), permissions.granted(PERMISSION_MILEAGE)) { _, _ -> }
+                .collect { registerListeners(info, executor) }
+        }
+    }
+
+    fun stop() {
+        carInfo?.let { info ->
+            unregisterListeners(info)
+            evStatusListener?.let(info::removeEvStatusListener)
+        }
+        evStatusListener = null
+        scope?.cancel()
+        scope = null
+    }
+
+    private fun recordEnergy(reading: CarEnergyLevels.Reading) {
+        val kinds = listOf(CarDataKind.BATTERY_PERCENT, CarDataKind.RANGE, CarDataKind.ENERGY_IS_LOW)
+        when (reading) {
+            // Already recorded for every kind in start().
+            is CarEnergyLevels.Reading.NoCarHardware -> Unit
+
+            // Every data point this subscription feeds.
+            is CarEnergyLevels.Reading.NoPermission -> kinds.forEach { record(it, CarDataStatus.NO_PERMISSION) }
+
+            is CarEnergyLevels.Reading.Level -> {
+                val level = reading.level
+                record(CarDataKind.BATTERY_PERCENT, level.batteryPercent.toPoint { "${it.roundToInt()}%" })
+                record(
+                    CarDataKind.RANGE,
+                    level.rangeRemainingMeters.toPoint { "${(it / 1000.0).roundToInt()} km" },
+                )
+                record(CarDataKind.ENERGY_IS_LOW, level.energyIsLow.toPoint(::yesNo))
+            }
+        }
+    }
+
+    private fun unregisterListeners(info: CarInfo) {
+        speedListener?.let(info::removeSpeedListener)
+        mileageListener?.let(info::removeMileageListener)
+        speedListener = null; mileageListener = null
+    }
+
+    private fun registerListeners(info: CarInfo, executor: Executor) {
+        unregisterListeners(info)
+
+        // Streamed values, each behind its own car permission.
+        speedListener = listenOrRecordDenied(listOf(CarDataKind.SPEED), PERMISSION_SPEED) {
+            OnCarDataAvailableListener<Speed> { speed ->
+                record(
+                    CarDataKind.SPEED,
+                    speed.displaySpeedMetersPerSecond.toPoint { "${(it * 3.6).roundToInt()} km/h" },
+                )
+            }.also { info.addSpeedListener(executor, it) }
+        }
+
+        mileageListener = listenOrRecordDenied(listOf(CarDataKind.ODOMETER), PERMISSION_MILEAGE) {
+            OnCarDataAvailableListener<Mileage> { mileage ->
+                record(
+                    CarDataKind.ODOMETER,
+                    mileage.odometerMeters.toPoint { "${(it / 1000.0).roundToInt()} km" },
+                )
+            }.also { info.addMileageListener(executor, it) }
+        }
+    }
+
+    /** The projected host names no permission for it; a host that wants one refuses the registration. */
+    private fun listenForEvStatus(info: CarInfo, executor: Executor): OnCarDataAvailableListener<EvStatus>? {
+        val listener = OnCarDataAvailableListener<EvStatus> { status ->
+            record(CarDataKind.CHARGE_PORT_OPEN, status.evChargePortOpen.toPoint(::yesNo))
+            record(CarDataKind.CHARGE_PORT_CONNECTED, status.evChargePortConnected.toPoint(::yesNo))
+        }
+        return try {
+            info.addEvStatusListener(executor, listener)
+            listener
+        } catch (denied: SecurityException) {
+            record(CarDataKind.CHARGE_PORT_OPEN, CarDataStatus.NO_PERMISSION)
+            record(CarDataKind.CHARGE_PORT_CONNECTED, CarDataStatus.NO_PERMISSION)
+            null
+        }
+    }
+
+    /**
+     * Registers a listener if its permission is granted; otherwise records
+     * NO_PERMISSION for **every** data point that listener would feed.
+     * Registration itself may also throw SecurityException — same outcome.
+     */
+    private fun <T> listenOrRecordDenied(
+        kinds: List<CarDataKind>,
+        permission: String,
+        register: () -> OnCarDataAvailableListener<T>,
+    ): OnCarDataAvailableListener<T>? {
+        if (!permissions.granted(permission).value) {
+            kinds.forEach { record(it, CarDataStatus.NO_PERMISSION) }
+            return null
+        }
+        return try {
+            register()
+        } catch (denied: SecurityException) {
+            kinds.forEach { record(it, CarDataStatus.NO_PERMISSION) }
+            null
+        }
+    }
+
+    private fun Model.toPoint(): CarDataPoint {
+        val parts = listOfNotNull(
+            manufacturer.takeIf { it.status == CarValue.STATUS_SUCCESS }?.value,
+            name.takeIf { it.status == CarValue.STATUS_SUCCESS }?.value,
+            year.takeIf { it.status == CarValue.STATUS_SUCCESS }?.value?.toString(),
+        )
+        return if (parts.isEmpty()) {
+            CarDataPoint(CarDataKind.MODEL, CarDataStatus.NO_DATA, null, time.nowMillis())
+        } else {
+            CarDataPoint(CarDataKind.MODEL, CarDataStatus.AVAILABLE, parts.joinToString(" "), time.nowMillis())
+        }
+    }
+
+    private fun EnergyProfile.toPoint(): CarDataPoint {
+        val connectors = evConnectorTypes.takeIf { it.status == CarValue.STATUS_SUCCESS }
+            ?.value?.joinToString { connectorName(it) }
+        return if (connectors.isNullOrEmpty()) {
+            CarDataPoint(CarDataKind.ENERGY_PROFILE, CarDataStatus.NO_DATA, null, time.nowMillis())
+        } else {
+            CarDataPoint(CarDataKind.ENERGY_PROFILE, CarDataStatus.AVAILABLE, connectors, time.nowMillis())
+        }
+    }
+
+    /**
+     * Only `STATUS_SUCCESS` with a value counts as measured. The kind on the
+     * returned point is a placeholder; [record] stamps the real one.
+     */
+    private fun <T : Any> CarValue<T>.toPoint(format: (T) -> String): CarDataPoint {
+        val measured = value.takeIf { status == CarValue.STATUS_SUCCESS }
+        return if (measured != null) {
+            CarDataPoint(CarDataKind.MODEL, CarDataStatus.AVAILABLE, format(measured), time.nowMillis())
+        } else {
+            CarDataPoint(CarDataKind.MODEL, CarDataStatus.NO_DATA, null, time.nowMillis())
+        }
+    }
+
+    private fun record(kind: CarDataKind, status: CarDataStatus) {
+        record(kind, CarDataPoint(kind, status, null, time.nowMillis()))
+    }
+
+    private fun record(kind: CarDataKind, point: CarDataPoint) {
+        // The repository serializes the write.
+        scope?.launch { diagnostics.recordCarDataPoint(point.copy(kind = kind)) }
+    }
+
+    private fun yesNo(value: Boolean): String = if (value) "ja" else "nein"
+
+    private fun connectorName(type: Int): String = when (type) {
+        EnergyProfile.EVCONNECTOR_TYPE_COMBO_1 -> "CCS1"
+        EnergyProfile.EVCONNECTOR_TYPE_COMBO_2 -> "CCS2"
+        EnergyProfile.EVCONNECTOR_TYPE_CHADEMO -> "CHAdeMO"
+        EnergyProfile.EVCONNECTOR_TYPE_MENNEKES -> "Typ 2"
+        EnergyProfile.EVCONNECTOR_TYPE_TESLA_SUPERCHARGER -> "Tesla"
+        else -> "Typ $type"
+    }
+
+    private companion object {
+        const val PERMISSION_SPEED = "com.google.android.gms.permission.CAR_SPEED"
+        const val PERMISSION_MILEAGE = "com.google.android.gms.permission.CAR_MILEAGE"
+    }
+}

@@ -1,0 +1,91 @@
+package org.julakali.powertrip.uitests
+
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import org.julakali.powertrip.android.phone.components.AppTopBar
+import com.android.tools.screenshot.PreviewTest
+import org.julakali.powertrip.android.phone.ActiveRouteScreen
+import org.julakali.powertrip.shared.domain.CommittedTrip
+import org.julakali.powertrip.shared.domain.SectionSelection
+
+@Composable
+private fun Screen(selection: SectionSelection = SectionSelection(), planning: Boolean = false) {
+    PreviewScaffold {
+        Box(Modifier.width(400.dp).height(560.dp)) {
+            ActiveRouteScreen(
+                trip = CommittedTrip(SamplePlan, startSocPercent = 80.0, committedAtEpochMillis = FixedCommitMillis),
+                selection = selection,
+                planning = planning,
+                onToggleSelecting = {},
+                onPickPoint = {},
+                onSectionSent = {},
+                onOpenStop = {},
+                onSendToMaps = {},
+                onReplan = {},
+                onEnd = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun ActiveRoute() = Screen()
+
+@PreviewTest
+@Preview(locale = "en", showBackground = true)
+@Composable
+fun ActiveRouteEnglish() = Screen()
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun ActiveRouteSectionPicked() = Screen(SectionSelection(selecting = true, a = 1, b = 2))
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun ActiveRouteReplanning() = Screen(planning = true)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun ActiveRouteDark() = Screen()
+
+/** The whole page: the large title in the bar, the summary card, the list, the sheet's row. */
+@OptIn(ExperimentalMaterial3Api::class)
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun ActiveRoutePage() {
+    PreviewScaffold {
+        Box(Modifier.width(400.dp).height(760.dp)) {
+            Scaffold(topBar = { AppTopBar(title = SamplePlan.destination.name, onBack = {}) }) { padding ->
+                ActiveRouteScreen(
+                    trip = CommittedTrip(SamplePlan, startSocPercent = 80.0, committedAtEpochMillis = FixedCommitMillis),
+                    selection = SectionSelection(),
+                    planning = false,
+                    onToggleSelecting = {},
+                    onPickPoint = {},
+                    onSectionSent = {},
+                    onOpenStop = {},
+                    onSendToMaps = {},
+                    onReplan = {},
+                    onEnd = {},
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                )
+            }
+        }
+    }
+}

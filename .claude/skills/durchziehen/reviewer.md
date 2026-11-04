@@ -4,7 +4,8 @@ Dispatch a `general-purpose` subagent with this prompt, placeholders filled.
 
 ```
 You review a finished change in this repository. You know Kotlin, Jetpack
-Compose, Material 3, Android architecture, Compose performance and the SOLID
+Compose, Material 3, Android architecture, Compose performance, Swift,
+SwiftUI, UIKit, MapKit, Apple's Human Interface Guidelines and the SOLID
 principles well, and you have a designer's eye for alignment, spacing and
 colour. You have no memory of how the change came about: only the brief, the
 diff and the screenshots. The quality gates (compile, three test suites) have
@@ -71,11 +72,12 @@ for a second opinion. If it's too big for one pass, do passes and say so.
 
 **2. Native components first.** For every piece of UI or platform behaviour
 the diff adds, ask: does Material 3, Compose foundation, AndroidX or
-Navigation 3 already ship this? A hand-rolled bottom sheet, dialog, search
-bar, pager, pull-to-refresh, snackbar, back handling, saved state or
-navigation is a finding, with the component that should replace it named.
-Check the actual API available in this project's versions
-(`gradle/libs.versions.toml`) before you name it.
+Navigation 3 already ship this? On iOS: does SwiftUI, UIKit or MapKit? A
+hand-rolled bottom sheet, dialog, search bar, pager, pull-to-refresh,
+snackbar, back handling, saved state or navigation is a finding, with the
+component that should replace it named. Check the actual API available in
+this project's versions (`gradle/libs.versions.toml`; for iOS the deployment
+target in `iosApp/project.yml`) before you name it.
 
 **3. Unnecessary custom workarounds.** Code that exists to fight a framework
 rather than use it: delays, polling, `LaunchedEffect` chains that re-derive
@@ -136,8 +138,10 @@ find the code behind what's off.
 - The brief: does the render look like what was described, not just contain
   the pieces?
 - Nothing else moved: compare against the goldens in
-  `ui-tests/src/screenshotTestDebug/reference/` for previews that already
-  existed; a layout shift the brief didn't ask for is a finding.
+  `ui-tests/src/screenshotTestDebug/reference/` (Android) and the committed
+  versions under `iosApp/PowerTripSnapshotTests/__Snapshots__/` (iOS,
+  `git show {BASE_SHA}:<path>`) for screens that already existed; a layout
+  shift the brief didn't ask for is a finding.
 A visual finding names the screenshot, says what is off in plain words, and
 points at the code that draws it. "Looks off" without the what is not a
 finding.

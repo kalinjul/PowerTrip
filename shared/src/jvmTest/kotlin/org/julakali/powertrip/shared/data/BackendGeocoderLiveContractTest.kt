@@ -1,0 +1,102 @@
+package org.julakali.powertrip.shared.data
+
+import org.julakali.powertrip.shared.BackendConfig
+
+import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.distanceKmTo
+import kotlinx.coroutines.runBlocking
+import java.io.File
+import java.util.Properties
+import kotlin.test.Test
+import kotlin.test.assertTrue
+
+/**
+ * Checks the destination search against the deployed backend.
+ *
+ * **Does not run by default:**
+ *
+ * ```bash
+ * POWERTRIP_LIVE=1 ./gradlew :shared:jvmTest --tests '*BackendGeocoderLiveContractTest'
+ * ```
+ */
+class BackendGeocoderLiveContractTest {
+
+    private val baseUrl: String? = localProperty("chargeAheadBaseUrl")
+    private val token: String? = localProperty("chargeAheadToken")
+    private val enabled: Boolean =
+        System.getenv("POWERTRIP_LIVE") == "1" && baseUrl != null && token != null
+
+    private val munich = LatLon(48.137, 11.575)
+
+    private fun geocoder() = BackendGeocoder(
+        createHttpClient(backend = BackendConfig(requireNotNull(baseUrl), requireNotNull(token))),
+    )
+
+    /** A partial word finds the place. */
+    @Test
+    fun aHalfTypedCityIsFound() {
+        if (skip()) return
+
+        val places = runBlocking { geocoder().search("Münch", near = munich, limit = 5) }
+
+        assertTrue(places.isNotEmpty(), "Nothing found for a half-typed input")
+        assertTrue(
+            places.any { it.name.startsWith("München") },
+            "München is not among the hits: ${places.map { it.name }}",
+        )
+    }
+
+    @Test
+    fun hitsCarryTheirCoordinatesAndAreDistinguishable() {
+        if (skip()) return
+
+        val places = runBlocking { geocoder().search("Hauptbahnhof", near = munich, limit = 5) }
+
+        assertTrue(places.isNotEmpty())
+        assertTrue(places.all { it.name.isNotBlank() }, "A hit without a name")
+        // There is no second step to resolve a hit; the position must be there.
+        assertTrue(places.all { it.position.lat != 0.0 || it.position.lon != 0.0 })
+        assertTrue(
+            places.distinctBy { it.description }.size == places.size,
+            "Duplicate labels: ${places.map { it.description }}",
+        )
+    }
+
+    /** Nearby results first. */
+    @Test
+    fun theOriginBiasesTheResult() {
+        if (skip()) return
+
+        val places = runBlocking { geocoder().search("Hauptbahnhof", near = munich, limit = 5) }
+        val nearest = places.minOf { munich.distanceKmTo(it.position) }
+
+        assertTrue(nearest < 50.0, "Nearest 'Hauptbahnhof' only at ${nearest.toInt()} km")
+    }
+
+    @Test
+    fun aBlankQueryReturnsNothing() {
+        if (skip()) return
+
+        assertTrue(runBlocking { geocoder().search("  ") }.isEmpty())
+    }
+
+    private fun skip(): Boolean {
+        if (!enabled) {
+            println("BackendGeocoderLiveContractTest skipped (POWERTRIP_LIVE!=1 or no configuration).")
+        }
+        return !enabled
+    }
+
+    private fun localProperty(name: String): String? {
+        var directory: File? = File(".").absoluteFile
+        while (directory != null) {
+            val candidate = File(directory, "local.properties")
+            if (candidate.isFile) {
+                val properties = Properties().apply { candidate.inputStream().use(::load) }
+                return properties.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }
+            }
+            directory = directory.parentFile
+        }
+        return null
+    }
+}

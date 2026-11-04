@@ -14,8 +14,8 @@ own until the reviewer has nothing left to say.
 Before touching code, find the decisions that would change what gets built
 and ask them **in a single message**. Not one at a time, not after exploring
 for ten minutes. Read what you need first (the files the task names, the
-tests around them, the relevant skills: `interactors`, `viewmodels`), then
-ask.
+tests around them, the relevant skills: `interactors`, `viewmodels`,
+`ios-simulator` for the iOS app), then ask.
 
 - Only decisions whose answer changes the work. A default that a careful
   colleague would pick is stated, not asked ("I'll put this in the drawer
@@ -55,18 +55,25 @@ Red, green, tidy, for each behaviour, smallest step that can fail:
 Rules of the house while building:
 
 - Reach for the native component before writing one: Material 3, Compose
-  foundation, AndroidX, Navigation 3. Check the catalogue first; a hand-rolled
-  panel that Material ships is a finding later.
+  foundation, AndroidX, Navigation 3 on Android; SwiftUI, UIKit and MapKit
+  on iOS. Check the catalogue first; a hand-rolled panel that Material or
+  SwiftUI ships is a finding later.
 - State belongs in a ViewModel, logic in an interactor or observer (the two
   skills say how). A `remember` holding business state is a finding later.
-- Every new or changed visual gets a `@PreviewTest` in
-  `ui-tests/src/screenshotTest/.../<Feature>Previews.kt`, light and dark, in
-  the states the brief names (a mode on, a list with a long tail, an empty
-  state). They are the goldens later, and they are what step 2b and the
-  reviewer look at. Previews have no Maps SDK; the map screen renders a plain
-  backdrop, that's fine.
-- Goldens are **not** re-recorded per tweak. Compile and run the unit suites;
-  the one docker golden pass comes before the PR, when the user asks.
+- Every new or changed visual gets a golden, light and dark, in the states
+  the brief names (a mode on, a list with a long tail, an empty state). They
+  are what step 2b and the reviewer look at. Maps don't render in either;
+  a screen over the map gets a plain backdrop, that's fine.
+  - Android: a `@PreviewTest` in
+    `ui-tests/src/screenshotTest/.../<Feature>Previews.kt`.
+  - iOS: a test in `iosApp/PowerTripSnapshotTests/<Feature>SnapshotTests.swift`
+    calling `assertLightAndDark(...)`. A SwiftUI screen splits into a view
+    that holds the ViewModel and a `<Screen>Content` that takes the state and
+    action closures; the test feeds the content from `Fixtures.swift`.
+- Android goldens are **not** re-recorded per tweak; the one docker pass
+  comes before the PR, when the user asks. iOS goldens are rendered locally
+  on the pinned simulator, so recording them *is* the render step (2b), and
+  the changed PNGs are committed with the change.
 - Commit as you go, one coherent step per commit, in the repo's commit style
   (`type: subject`, lowercase, under ~70 chars, dry). No AI attribution.
 
@@ -75,10 +82,11 @@ actual exit code. A green you didn't see is a guess.
 
 ## 2b. Look at it
 
-Tests prove behaviour, not looks. Before the review, render the previews
-this task added or changed and look at the result yourself. Only those: the
-task takes a class filter, and the whole suite is a minute you don't need
-to spend per round.
+Tests prove behaviour, not looks. Before the review, render what this task
+added or changed and look at the result yourself.
+
+**Android.** Only the previews this task touched: the task takes a class
+filter, and the whole suite is a minute you don't need to spend per round.
 
     ./gradlew --console=plain --no-scan :ui-tests:validateDebugScreenshotTest --tests '*<Feature>Previews*'
 
@@ -96,30 +104,49 @@ sees it; a reviewer's time is for what you couldn't see yourself.
 
 Never commit these renders as goldens; the docker pass before the PR does that.
 
+**iOS.** `tools/check.sh ios --record` re-renders every snapshot on the
+pinned simulator and validates the result; `git status` then shows which
+goldens changed, under
+
+    iosApp/PowerTripSnapshotTests/__Snapshots__/<Feature>SnapshotTests/<test>.<name>-light.png
+
+A golden that changed although the task didn't touch its screen is a
+regression, not noise: the render is deterministic on the pinned simulator.
+Without Xcode (Linux), iOS can't be rendered here; say so, and the
+`iOS goldens` workflow on GitHub records them for the branch once it's
+pushed, which is the user's call.
+
+Look at each changed render with the same questions as on Android.
+
 ## Quality gates
 
 The same gates run twice: before the reviewer is dispatched, and before the
 hand-over. Every one has to pass; a red gate is fixed first, it is never
 reported as a finding to be weighed.
 
+Only the gates of the app the change touches run. `tools/check.sh` reads the
+diff against `origin/main`, committed or not, and runs Android's, iOS's or
+both (`tools/check.sh sides` prints which; the rules are in
+`tools/changed-sides.sh`). Shared code wakes both apps.
+
 | Gate | Command | Passes when |
 |---|---|---|
-| Compiles, every module | `./gradlew :shared:compileKotlinJvm :phone-ui:compileDebugKotlin :androidApp:compileDebugKotlin :ui-tests:compileDebugUnitTestKotlin :ui-tests:compileDebugScreenshotTestKotlin` | exit 0, no `e:` lines |
-| Domain tests | `./gradlew :shared:jvmTest` | exit 0 |
-| Phone behaviour tests | `./gradlew :ui-tests:testDebugUnitTest` | exit 0 |
-| Car tests | `./gradlew :androidApp:testDebugUnitTest` | exit 0 |
+| The touched app's gates | `tools/check.sh --no-goldens` | exit 0 |
+| Android, inside that | every module compiles; shared, phone and car tests | no `e:` lines |
+| iOS, inside that | Kotlin/Native tests; app and test bundles build (Swift warnings are errors); the XCUITest when `iosApp/Secrets.xcconfig` exists | `Gates passed for: …` |
 | New behaviour has a test | review the diff yourself | every behaviour the brief names is asserted somewhere; a behaviour without a test is a gap, not a style choice |
-| New visuals have a preview | review the diff yourself | every composable the brief adds or visibly changes has a `@PreviewTest`, light and dark, in `ui-tests/src/screenshotTest`; its render exists under `rendered/` |
-| Warnings | the compile output | no new `w:` lines in files the diff touches |
+| New visuals have a golden | review the diff yourself | every composable or SwiftUI view the brief adds or visibly changes has a `@PreviewTest` or an `assertLightAndDark`, light and dark, and its render exists (2b) |
+| Warnings | the compile output | no new `w:` lines in Kotlin files the diff touches |
 | Working tree | `git status --short` | empty after the last commit |
 
-Goldens (`tools/screenshots.sh validate`) are not a gate here; they run once
-before the PR, when the user asks. `./gradlew testAll` runs the three test
-gates in one go, use it when the full tree changed.
+Android goldens (`tools/screenshots.sh validate`) are not a gate here; they
+run once before the PR, when the user asks. iOS goldens are covered by 2b's
+`tools/check.sh ios --record`, which validates after recording. Without
+Xcode the iOS part shrinks to what Linux can check, and `check.sh` says what
+it skipped: report that part as unverified.
 
-Run gates with `--console=plain --no-scan`, the log redirected to the
-scratchpad, and read the summary lines; the chat gets the exit code and the
-failures, not the log.
+Redirect the log to the scratchpad and read the summary lines; the chat gets
+the exit code and the failures, not the log.
 
 ## 3. Review, by a subagent
 
@@ -131,9 +158,9 @@ subagent with the prompt in [reviewer.md](reviewer.md). Fill in:
 - `{PREVIOUS_FINDINGS}`: empty on the first round; on later rounds the last
   report's findings, each marked fixed or pushed back with the reason
 - `{SCREENSHOTS}`: the absolute paths of the rendered PNGs from step 2b for
-  the previews this task added or changed, light and dark, one per line, each
-  with the preview's name and what state it shows. "none, no visual change"
-  when the task touched no UI.
+  the previews and snapshots this task added or changed, light and dark, one
+  per line, each with its name and what state it shows. "none, no visual
+  change" when the task touched no UI.
 
 The reviewer sees the diff, the brief and the screenshots, never this
 session's history. It does not get to spawn reviewers of its own. It reports
@@ -174,7 +201,8 @@ No push, no PR: that's the user's call, asked for explicitly each time.
 | "I can review this myself, it's small" | The reviewer's value is a context that doesn't know what you meant. Dispatch it. |
 | "That finding is wrong, skip it" | Push back with evidence in the next round. Silence looks like a fix. |
 | "Round four will get it" | Three rounds of the same finding is a design problem. Stop and say so. |
-| "Let me re-record goldens to be sure" | Not until the PR. Docker is three minutes you spend once. |
+| "Let me re-record the Android goldens to be sure" | Not until the PR. Docker is three minutes you spend once. |
+| "I'll run every gate, just in case" | `tools/check.sh` picks the touched app. An iOS-only change doesn't need Android's minutes. |
 | "The tests pass, it must look fine" | Tests don't have eyes. Render it and look, then let the reviewer look. |
 | "I'll render all the previews to be safe" | Only the ones this task touched, with `--tests`. The rest have goldens. |
 | "A preview for this is overkill" | A preview is the only way anyone sees it before the user does. |

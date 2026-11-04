@@ -1,4 +1,4 @@
-# ChargeAhead — Architecture
+# PowerTrip — Architecture
 
 **Charging-stop assistant for Android Auto and Apple CarPlay.**
 Shows the next reachable charging stations ahead while driving, sorted by
@@ -162,7 +162,7 @@ location.
 ## 3. Module layout
 
 ```
-ChargeAhead/
+PowerTrip/
 ├── shared/                        Kotlin Multiplatform
 │   ├── commonMain/
 │   │   ├── domain/                Model, data source and repository interfaces (plain Kotlin, no frameworks)
@@ -202,7 +202,7 @@ flowchart TD
         DATA["data: sources + cache"]
     end
     subgraph ext["External"]
-        BE["ChargeAhead backend<br/>sites · networks · routes · search"]
+        BE["PowerTrip backend<br/>sites · networks · routes · search"]
         LOC["GPS"]
     end
     AA --> VM

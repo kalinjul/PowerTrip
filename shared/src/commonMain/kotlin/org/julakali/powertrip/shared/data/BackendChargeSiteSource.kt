@@ -1,0 +1,122 @@
+package org.julakali.powertrip.shared.data
+
+import org.julakali.powertrip.shared.domain.Address
+import org.julakali.powertrip.shared.domain.ChargeSite
+import org.julakali.powertrip.shared.domain.ChargeSiteSource
+import org.julakali.powertrip.shared.domain.Connector
+import org.julakali.powertrip.shared.domain.ConnectorType
+import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.PolylineArea
+import org.julakali.powertrip.shared.domain.PriceComponent
+import org.julakali.powertrip.shared.domain.PriceKind
+import org.julakali.powertrip.shared.domain.SearchArea
+import org.julakali.powertrip.shared.domain.SectorArea
+import org.julakali.powertrip.shared.domain.Tariff
+import org.julakali.powertrip.shared.domain.Weekday
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import org.julakali.powertrip.api.AreaDto
+import org.julakali.powertrip.api.ChargeSiteDto
+import org.julakali.powertrip.api.ChargeSitesRequest
+import org.julakali.powertrip.api.ChargeSitesResponse
+import org.julakali.powertrip.api.ConnectorDto
+import org.julakali.powertrip.api.ConnectorTypeDto
+import org.julakali.powertrip.api.LatLonDto
+import org.julakali.powertrip.api.NetworkFilterDto
+import org.julakali.powertrip.api.PriceComponentDto
+import org.julakali.powertrip.api.TariffDto
+
+/** Charging sites from the PowerTrip backend instead of from a provider directly. */
+class BackendChargeSiteSource(
+    private val httpClient: HttpClient,
+) : ChargeSiteSource {
+
+    override val id: String = SOURCE_ID
+
+    override suspend fun query(area: SearchArea, networkKeys: Set<String>): List<ChargeSite> {
+        val response: ChargeSitesResponse = httpClient.post(PATH) {
+            contentType(ContentType.Application.Json)
+            setBody(ChargeSitesRequest(area = area.toDto(), networks = networkKeys.map { NetworkFilterDto(key = it) }))
+        }.body()
+
+        return response.sites.map { it.toDomain() }
+    }
+
+    companion object {
+        const val SOURCE_ID: String = "chargeahead"
+        private const val PATH = "v1/charge-sites"
+    }
+}
+
+private fun SearchArea.toDto(): AreaDto = when (this) {
+    is PolylineArea -> AreaDto.Polyline(points = points.map { it.toDto() }, bufferKm = bufferKm)
+    is SectorArea -> AreaDto.Sector(
+        origin = origin.toDto(),
+        bearingDeg = bearingDeg,
+        halfAngleDeg = halfAngleDeg,
+        radiusKm = radiusKm,
+    )
+    // A shape the contract does not know is sent as the circle around it.
+    else -> AreaDto.Sector(
+        origin = origin.toDto(),
+        bearingDeg = 0.0,
+        halfAngleDeg = 180.0,
+        radiusKm = radiusKm,
+    )
+}
+
+internal fun LatLon.toDto() = LatLonDto(lat = lat, lon = lon)
+
+internal fun ChargeSiteDto.toDomain() = ChargeSite(
+    id = id,
+    name = name,
+    operator = operator,
+    operatorId = operatorId,
+    position = LatLon(position.lat, position.lon),
+    connectors = connectors.map { it.toDomain() },
+    address = address?.let { Address(street = it.street, postalCode = it.postalCode, town = it.town) },
+    sources = sources.ifEmpty { setOf(BackendChargeSiteSource.SOURCE_ID) },
+    liveStatusId = id.takeIf { hasLiveStatus },
+    networkKey = network,
+    adHocTariffs = adHocTariffs.map { it.toDomain() },
+)
+
+private fun TariffDto.toDomain() = Tariff(
+    currency = currency,
+    components = components.map { it.toDomain() },
+    connectors = connectors.map { it.toDomain() },
+)
+
+private fun PriceComponentDto.toDomain() = PriceComponent(
+    kind = when (type) {
+        "per_kwh" -> PriceKind.PER_KWH
+        "per_minute" -> PriceKind.PER_MINUTE
+        "session" -> PriceKind.SESSION
+        else -> PriceKind.OTHER
+    },
+    price = price,
+    fromMinute = fromMinute,
+    toMinute = toMinute,
+    startTime = startTime,
+    endTime = endTime,
+    days = days.mapNotNull { day -> Weekday.entries.firstOrNull { it.name.equals(day, ignoreCase = true) } }.toSet(),
+)
+
+private fun ConnectorDto.toDomain() = Connector(
+    type = type.toDomain(),
+    maxPowerKw = maxPowerKw,
+    count = count,
+)
+
+internal fun ConnectorTypeDto.toDomain(): ConnectorType = when (this) {
+    ConnectorTypeDto.CCS2 -> ConnectorType.CCS2
+    ConnectorTypeDto.TYPE2 -> ConnectorType.TYPE2
+    ConnectorTypeDto.CHADEMO -> ConnectorType.CHADEMO
+    ConnectorTypeDto.TESLA_NACS -> ConnectorType.TESLA_NACS
+    ConnectorTypeDto.SCHUKO -> ConnectorType.SCHUKO
+    ConnectorTypeDto.UNKNOWN -> ConnectorType.UNKNOWN
+}

@@ -1,7 +1,7 @@
 # Data sources and repositories
 
 `shared` reaches the outside world through two kinds of interfaces, both
-declared in `org.julakali.chargeahead.shared.domain` and implemented outside
+declared in `org.julakali.powertrip.shared.domain` and implemented outside
 it (`shared/data`, `shared/settings`, or the platform):
 
 - A **data source** fetches or streams something the app doesn't keep: the
@@ -88,8 +88,10 @@ interface VehicleRepository {
 interface PreferencesRepository {
     val networks: Flow<NetworkPreferences>
     val chargeFilters: Flow<ChargeFilters>        // phone flows: min power, max distance; slowMode is not persisted
+    val navigationApp: Flow<NavigationApp>        // iOS hand-offs only; Apple Maps until the driver picks
     suspend fun setNetworks(preferences: NetworkPreferences)
     suspend fun setChargeFilters(filters: ChargeFilters)
+    suspend fun setNavigationApp(app: NavigationApp)
 }
 interface DestinationHistory {
     val recentDestinations: Flow<List<Destination>>
@@ -132,10 +134,10 @@ id under `vehicle.id` in the settings file. The database still falls back to
 a destructive migration, so a schema bump empties the garage along with the
 caches.
 
-## The ChargeAhead backend
+## The PowerTrip backend
 
 Charging sites, live status, charging networks, the vehicle catalog, the
-destination search and route calculation all come from the ChargeAhead
+destination search and route calculation all come from the PowerTrip
 backend. The app stops at startup when it is not configured.
 
 - Android: `chargeAheadBaseUrl` and `chargeAheadToken` in `local.properties`
@@ -163,7 +165,7 @@ Each source's mapping is checked twice:
   spot says nothing about the code:
 
   ```bash
-  CHARGEAHEAD_LIVE=1 ./gradlew :shared:jvmTest --tests '*BackendChargeSiteLiveContractTest'
+  POWERTRIP_LIVE=1 ./gradlew :shared:jvmTest --tests '*BackendChargeSiteLiveContractTest'
   ```
 
 `BackendRouteSiteSource` has the same pair, `BackendRouteSiteSourceTest` and

@@ -122,7 +122,7 @@ category:
 
 ```
 androidx.car.app.CarAppService:
-  org.julakali.chargeahead/org.julakali.chargeahead.android.car.ChargeCarAppService filter ...
+  org.julakali.chargeahead/org.julakali.powertrip.android.car.ChargeCarAppService filter ...
     Action: "androidx.car.app.CarAppService"
     Category: "androidx.car.app.category.POI"
 ```

@@ -16,7 +16,7 @@ plugins {
 }
 
 android {
-    namespace = "org.julakali.chargeahead.android.phone"
+    namespace = "org.julakali.powertrip.android.phone"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {

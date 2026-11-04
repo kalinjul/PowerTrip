@@ -4,7 +4,7 @@ Date: 2026-09-22. Direction agreed in conversation, not yet a spec.
 
 ## What the app is for
 
-ChargeAhead makes Google Maps behave more like a Tesla's trip planner: it
+PowerTrip makes Google Maps behave more like a Tesla's trip planner: it
 adds the charging logic Maps lacks — which stop, how long, will I make it —
 and leaves navigation to Maps. It is not a Komoot: "plan a route once and
 drive it again later" is not the product.

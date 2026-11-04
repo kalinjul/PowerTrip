@@ -1,0 +1,202 @@
+package org.julakali.powertrip.uitests
+
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.android.tools.screenshot.PreviewTest
+import org.julakali.powertrip.android.phone.DestinationHeader
+import org.julakali.powertrip.shared.ui.TripListLayout
+import org.julakali.powertrip.android.phone.SocEditing
+import org.julakali.powertrip.android.phone.TripSheetContent
+import org.julakali.powertrip.android.phone.TripSummary
+import org.julakali.powertrip.android.phone.UnreachableTripContent
+import org.julakali.powertrip.android.phone.UnreachableTripSummary
+import org.julakali.powertrip.shared.domain.UnreachableTrip
+import org.julakali.powertrip.shared.ui.TripUiState
+import androidx.compose.foundation.layout.Column
+import org.julakali.powertrip.android.phone.headerLine
+import org.julakali.powertrip.shared.domain.RouteSegment
+import org.julakali.powertrip.shared.domain.SectionSelection
+import org.julakali.powertrip.shared.domain.TripPlan
+
+@Composable
+private fun Sheet(layout: TripListLayout, selection: SectionSelection = SectionSelection(), plan: TripPlan = SamplePlan) {
+    SheetBox {
+        TripSheetContent(
+            plan = plan,
+            startSocPercent = 80.0,
+            layout = layout,
+            selection = selection,
+            onToggleSelecting = {},
+            onPickPoint = {},
+            onSectionSent = {},
+            onOpenStop = {},
+            onSendToMaps = {},
+            socEditing = SocEditing(null, null, false, {}, {}, {}, {}, {}, {}, {}, {}),
+        )
+    }
+}
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetList() = Sheet(TripListLayout.LIST)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetListWithTemperatures() = Sheet(
+    TripListLayout.LIST,
+    // No stops, so the weather source below the destination is in view.
+    plan = SamplePlan.copy(
+        stops = emptyList(),
+        route = SamplePlan.route.copy(
+            segments = listOf(
+                RouteSegment(0.0, 388.0, 226.0, 0.0, 0.0, temperatureC = -3.4),
+                RouteSegment(388.0, 388.0, 226.0, 0.0, 0.0, temperatureC = 7.6),
+            ),
+            weatherAttribution = "Datenbasis: Deutscher Wetterdienst, Einzelwerte interpoliert",
+        ),
+    ),
+)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetListSectionPicked() = Sheet(TripListLayout.LIST, SectionSelection(selecting = true, a = 1, b = 2))
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetTiles() = Sheet(TripListLayout.TILES)
+
+@PreviewTest
+@Preview(locale = "en", showBackground = true)
+@Composable
+fun TripSheetTilesEnglish() = Sheet(TripListLayout.TILES)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, fontScale = 1.5f)
+@Composable
+fun TripSheetListLargeFont() = Sheet(TripListLayout.LIST)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSummaryList() {
+    PreviewScaffold {
+        Box(Modifier.width(400.dp)) {
+            TripSummary(plan = SamplePlan, layout = TripListLayout.LIST, onToggleLayout = {}, onReplan = {})
+        }
+    }
+}
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSummaryTiles() {
+    PreviewScaffold {
+        Box(Modifier.width(400.dp)) {
+            TripSummary(plan = SamplePlan, layout = TripListLayout.TILES, onToggleLayout = {}, onReplan = {})
+        }
+    }
+}
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun DestinationHeaderWithPlan() {
+    PreviewScaffold {
+        Box(Modifier.width(400.dp).padding(8.dp)) {
+            DestinationHeader(title = SamplePlan.destination.name, subtitle = SamplePlan.headerLine(), onClear = {}, onTitleClick = {})
+        }
+    }
+}
+
+// Dark theme: the same components under UI_MODE_NIGHT_YES.
+@PreviewTest
+@Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun TripSheetListDark() = Sheet(TripListLayout.LIST)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun TripSheetListSectionPickedDark() = Sheet(TripListLayout.LIST, SectionSelection(selecting = true, a = 1, b = 2))
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun TripSheetTilesDark() = Sheet(TripListLayout.TILES)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun DestinationHeaderWithPlanDark() = DestinationHeaderWithPlan()
+
+/** A phone's header width with a long trip line: the subtitle steps down instead of being cut. */
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun DestinationHeaderNarrowLongTrip() {
+    PreviewScaffold {
+        Box(Modifier.width(260.dp).padding(8.dp)) {
+            DestinationHeader(title = "Kiel", subtitle = "873 km · 11h 16m", onClear = {}, onTitleClick = {})
+        }
+    }
+}
+
+@Composable
+private fun UnreachableSheet(why: UnreachableTrip) {
+    SheetBox {
+        Column {
+            UnreachableTripSummary(onReplan = {})
+            UnreachableTripContent(
+                trip = TripUiState.Unreachable(SamplePlan.destination, why, startSocPercent = 6.0),
+                socEditing = SocEditing(null, null, false, {}, {}, {}, {}, {}, {}, {}, {}),
+            )
+        }
+    }
+}
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetNoChargerInReach() = UnreachableSheet(UnreachableTrip.NoCharger(afterKm = 0.0))
+
+@PreviewTest
+@Preview(locale = "en", showBackground = true)
+@Composable
+fun TripSheetNoChargerAfterKmEnglish() = UnreachableSheet(UnreachableTrip.NoCharger(afterKm = 120.0))
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetNoConnection() = UnreachableSheet(UnreachableTrip.NoConnection)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, fontScale = 1.5f)
+@Composable
+fun TripSheetNoRouteLargeFont() = UnreachableSheet(UnreachableTrip.NoRoute)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun TripSheetNoChargerInReachDark() = UnreachableSheet(UnreachableTrip.NoCharger(afterKm = 0.0))
+
+/** No plan reached the destination: the header keeps its name, without a route line. */
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun DestinationHeaderWithoutPlan() {
+    PreviewScaffold {
+        Box(Modifier.width(400.dp).padding(8.dp)) {
+            DestinationHeader(title = SamplePlan.destination.name, subtitle = null, onClear = {}, onTitleClick = {})
+        }
+    }
+}

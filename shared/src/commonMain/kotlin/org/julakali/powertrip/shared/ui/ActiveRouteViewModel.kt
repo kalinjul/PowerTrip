@@ -1,0 +1,173 @@
+package org.julakali.powertrip.shared.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import org.julakali.powertrip.shared.ChargeStopsFeature
+import org.julakali.powertrip.shared.combine
+import org.julakali.powertrip.shared.domain.Destination
+import org.julakali.powertrip.shared.domain.CommittedTrip
+import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.NavigationApp
+import org.julakali.powertrip.shared.domain.mapsUrl
+import org.julakali.powertrip.shared.domain.SectionSelection
+import org.julakali.powertrip.shared.domain.VehicleRepository
+import org.julakali.powertrip.shared.domain.reportedByCar
+import org.julakali.powertrip.shared.domain.TripPlanResult
+import org.julakali.powertrip.shared.domain.unreachable
+import org.julakali.powertrip.shared.domain.UnreachableTrip
+import org.julakali.powertrip.shared.domain.TripRepository
+import org.julakali.powertrip.shared.domain.invoke
+import org.julakali.powertrip.shared.domain.usecases.EndTripInteractor
+import org.julakali.powertrip.shared.domain.usecases.ReplanCommittedTripInteractor
+import kotlin.math.roundToInt
+
+data class ActiveRouteUiState(
+    val trip: CommittedTrip?,
+    val selection: SectionSelection = SectionSelection(),
+    val planning: Boolean = false,
+    val startPosition: LatLon? = null,
+    /** The charge-level prompt before a re-plan; `null` while closed. */
+    val socInput: String? = null,
+    /** The trip's route is drawn on the home map. */
+    val shownOnMap: Boolean = false,
+) {
+    /** Re-planning needs to know where we are. */
+    val canReplan: Boolean get() = trip != null && startPosition != null
+
+    /** What "An Maps senden" hands over: the picked section, or the whole trip. */
+    val mapsUrl: String? get() = trip?.plan?.mapsUrl(startPosition, selection)
+
+    fun mapsUrl(app: NavigationApp): String? = trip?.plan?.mapsUrl(startPosition, selection, app)
+}
+
+sealed interface ActiveRouteEvent {
+    data object Replanned : ActiveRouteEvent
+
+    /** The re-plan got nowhere; the trip under way stays. */
+    data class ReplanFailed(val why: UnreachableTrip) : ActiveRouteEvent
+    data object VehicleMissing : ActiveRouteEvent
+    data object Ended : ActiveRouteEvent
+}
+
+/** The trip the driver is on: its stops, sending it again, planning it anew, ending it. */
+class ActiveRouteViewModel(
+    private val vehicles: VehicleRepository,
+    private val feature: ChargeStopsFeature,
+    private val replanCommittedTrip: ReplanCommittedTripInteractor,
+    private val endTrip: EndTripInteractor,
+    private val trips: TripRepository,
+) : ViewModel() {
+
+    private val selection = MutableStateFlow(SectionSelection())
+    private val socEditor = MutableStateFlow<String?>(null)
+    private val events = MutableStateFlow<ActiveRouteEvent?>(null)
+
+    // Held by destination: a re-plan stays on the map, a trip ended elsewhere doesn't hand it on.
+    private val mapShownFor = MutableStateFlow<Destination?>(null)
+
+    val event: StateFlow<ActiveRouteEvent?> = events.asStateFlow()
+
+    val uiState: StateFlow<ActiveRouteUiState> = combine(
+        trips.state.map { it.committed },
+        selection,
+        replanCommittedTrip.inProgress,
+        feature.currentFix,
+        socEditor,
+        mapShownFor,
+    ) { trip, sectionSelection, isPlanning, fix, socInput, shownFor ->
+        val shownOnMap = trip != null && trip.plan.destination == shownFor
+        ActiveRouteUiState(trip, sectionSelection, isPlanning, fix?.position, socInput, shownOnMap)
+        // Seeded from the stores: the page's own ViewModel is born on the tap, an empty
+        // first value would slide in an empty page.
+    }.stateIn(
+        viewModelScope,
+        WhileUiSubscribed,
+        ActiveRouteUiState(trip = trips.state.value.committed, startPosition = feature.currentFix.value?.position),
+    )
+
+    /**
+     * "Neu planen": with the car reporting its charge, plan right away;
+     * otherwise ask for the level first, seeded with the stored one.
+     */
+    fun onReplanRequested() {
+        if (feature.currentEnergy.value.reportedByCar) {
+            replan()
+            return
+        }
+        viewModelScope.launch {
+            socEditor.value = vehicles.manualSocPercent.first()?.roundToInt()?.toString().orEmpty()
+        }
+    }
+
+    fun onSocInputChanged(input: String) {
+        // Only while the editor is open: a stray keystroke must not reopen it.
+        socEditor.update { open -> open?.let { input.filter(Char::isDigit).take(3) } }
+    }
+
+    fun onSocEditDismissed() {
+        socEditor.value = null
+    }
+
+    /** Re-plans from the level just entered, which is kept as the stored one. */
+    fun onSocConfirmed() {
+        val socPercent = socEditor.value?.toIntOrNull()?.takeIf { it in 1..100 } ?: return
+        socEditor.value = null
+        replan(socPercent.toDouble())
+    }
+
+    /** Plans the same destination from where we are now and keeps that instead of the stored plan. */
+    fun replan(socPercent: Double? = null) {
+        if (uiState.value.trip == null) return
+        val from = feature.currentFix.value?.position ?: return
+        selection.value = SectionSelection()
+        viewModelScope.launch {
+            val result = replanCommittedTrip(ReplanCommittedTripInteractor.Params(from, socPercent)).getOrNull()
+            events.value = when (result) {
+                is TripPlanResult.Planned -> ActiveRouteEvent.Replanned
+                TripPlanResult.NoVehicle -> ActiveRouteEvent.VehicleMissing
+                else -> ActiveRouteEvent.ReplanFailed(result?.unreachable() ?: UnreachableTrip.NoConnection)
+            }
+        }
+    }
+
+    fun endTrip() {
+        selection.value = SectionSelection()
+        viewModelScope.launch {
+            endTrip.invoke()
+            events.value = ActiveRouteEvent.Ended
+        }
+    }
+
+    fun onSectionSelectingToggled() {
+        selection.value = selection.value.toggled()
+    }
+
+    fun onSectionPointPicked(index: Int) {
+        selection.value = selection.value.picked(index)
+    }
+
+    /** After a section went to Maps the mode ends. */
+    fun onSectionSent() {
+        selection.value = SectionSelection()
+    }
+
+    fun onShowOnMap() {
+        mapShownFor.value = trips.state.value.committed?.plan?.destination
+    }
+
+    fun onMapHidden() {
+        mapShownFor.value = null
+    }
+
+    fun onEventHandled() {
+        events.value = null
+    }
+}

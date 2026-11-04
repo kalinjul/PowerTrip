@@ -15,7 +15,7 @@ plugins {
 //  the source set, the tests and the goldens stay as they are.
 //  https://developer.android.com/studio/preview/compose-screenshot-testing-with-testsuites
 android {
-    namespace = "org.julakali.chargeahead.uitests"
+    namespace = "org.julakali.powertrip.uitests"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {

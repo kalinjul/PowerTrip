@@ -1,6 +1,6 @@
 # Domain model
 
-The plain Kotlin types in `org.julakali.chargeahead.shared.domain`. Android
+The plain Kotlin types in `org.julakali.powertrip.shared.domain`. Android
 and iOS build on them and duplicate none of them. The source is the
 authority; this page is the overview.
 

@@ -1,0 +1,30 @@
+package org.julakali.powertrip.shared.domain
+
+/**
+ * How fast a charging site is, as the map marker shows it: a class that
+ * carries a color, and a number of bolts that grows with the power.
+ * Everything below [MEDIUM_KW] is slow.
+ */
+enum class ChargeSpeed(val bolts: Int) {
+    SLOW(1),
+    MEDIUM(1),
+    FAST(1),
+    ULTRA(2),
+    HYPER(3),
+    ;
+
+    companion object {
+        const val MEDIUM_KW = 50.0
+        const val FAST_KW = 100.0
+        const val ULTRA_KW = 150.0
+        const val HYPER_KW = 300.0
+
+        fun of(maxPowerKw: Double): ChargeSpeed = when {
+            maxPowerKw >= HYPER_KW -> HYPER
+            maxPowerKw >= ULTRA_KW -> ULTRA
+            maxPowerKw >= FAST_KW -> FAST
+            maxPowerKw >= MEDIUM_KW -> MEDIUM
+            else -> SLOW
+        }
+    }
+}

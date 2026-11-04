@@ -1,8 +1,9 @@
 # Build and test on main and on every pull request against main.
 #
-# Deliberately three jobs, not one: the Kotlin/Native job downloads the
+# Deliberately separate jobs, not one: the Kotlin/Native job downloads the
 # ~1 GB Konan toolchain and would otherwise stretch the Android feedback
-# from a few minutes to well over ten.
+# from a few minutes to well over ten. A pull request only runs the jobs of
+# the app it touches (tools/changed-sides.sh); main always runs everything.
 name: CI
 
 on:
@@ -10,6 +11,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Started by ios-goldens.yml after it commits, since a push with the
+  # workflow token triggers no workflow of its own.
+  workflow_dispatch:
 
 # Superseded pull request runs are pointless; a superseded main run is not
 # (it is the one that says whether main is green).
@@ -20,7 +24,7 @@ concurrency:
 permissions:
   contents: read
 
-# Read by settings.gradle.kts to resolve org.julakali.chargeahead:api-model.
+# Read by settings.gradle.kts to resolve org.julakali.powertrip:api-model.
 env:
   CHARGEAHEAD_MAVEN_USER: ${{ secrets.CHARGEAHEAD_MAVEN_USER }}
   CHARGEAHEAD_MAVEN_PASSWORD: ${{ secrets.CHARGEAHEAD_MAVEN_PASSWORD }}
@@ -33,8 +37,38 @@ env:
 # No backend or map keys: the build does not need them, only a running app
 # does.
 jobs:
+  changes:
+    name: Which app changed
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.sides.outputs.android }}
+      ios: ${{ steps.sides.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: The sorting rules still hold
+        run: tools/changed-sides.test.sh
+
+      - name: Sort the changed files
+        id: sides
+        run: |
+          if [ "${{ github.event_name }}" = push ] || [ "${{ github.ref }}" = refs/heads/main ]; then
+            sides="android ios"
+          else
+            sides="$(tools/check.sh sides --base origin/main)"
+          fi
+          echo "Sides: ${sides:-none}"
+          case " $sides " in *" android "*) echo "android=true" >> "$GITHUB_OUTPUT" ;; esac
+          case " $sides " in *" ios "*) echo "ios=true" >> "$GITHUB_OUTPUT" ;; esac
+
+  # A skipped job counts as passed for the required checks, so when the
+  # sorting itself fails, every job runs.
   android:
     name: Android build + shared tests
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +97,7 @@ jobs:
         # sees secrets, so this is where that run stops, legibly.
         run: |
           if [ -z "${CHARGEAHEAD_MAVEN_USER:-}" ] || [ -z "${CHARGEAHEAD_MAVEN_PASSWORD:-}" ]; then
-            echo "::error title=No Maven credentials::org.julakali.chargeahead:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
+            echo "::error title=No Maven credentials::org.julakali.powertrip:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
             exit 1
           fi
 
@@ -72,7 +106,7 @@ jobs:
 
       - name: Shared tests (JVM target)
         # The live contract tests against the backend stay off (they only run
-        # with CHARGEAHEAD_LIVE=1): a test that goes red because a server
+        # with POWERTRIP_LIVE=1): a test that goes red because a server
         # hiccups says nothing about this repository. AGENTS.md, "Tests".
         run: ./gradlew :shared:jvmTest
 
@@ -107,6 +141,8 @@ jobs:
 
   ios-kotlin:
     name: Kotlin/Native (iosMain)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +162,7 @@ jobs:
         # sees secrets, so this is where that run stops, legibly.
         run: |
           if [ -z "${CHARGEAHEAD_MAVEN_USER:-}" ] || [ -z "${CHARGEAHEAD_MAVEN_PASSWORD:-}" ]; then
-            echo "::error title=No Maven credentials::org.julakali.chargeahead:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
+            echo "::error title=No Maven credentials::org.julakali.powertrip:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
             exit 1
           fi
 
@@ -147,6 +183,8 @@ jobs:
 
   swift-syntax:
     name: Swift syntax check
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -162,3 +200,61 @@ jobs:
             exit 0
           fi
           tools/check-swift.sh
+
+  ios:
+    name: iOS app + snapshot goldens
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios == 'true') }}
+    # The goldens' Xcode and simulator (tools/ios-toolchain.env) are installed there.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-36
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check the Maven credentials
+        run: |
+          if [ -z "${CHARGEAHEAD_MAVEN_USER:-}" ] || [ -z "${CHARGEAHEAD_MAVEN_PASSWORD:-}" ]; then
+            echo "::error title=No Maven credentials::org.julakali.powertrip:api-model cannot be resolved. Pull requests from forks do not get secrets and cannot be built here."
+            exit 1
+          fi
+
+      - name: Cache Kotlin/Native toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+
+      - name: Install xcodegen and the pinned simulator
+        run: |
+          brew install xcodegen
+          . tools/ios-toolchain.env
+          if ! grep -q "iOS $IOS_RUNTIME " <<< "$(xcrun simctl list runtimes)"; then
+            sudo xcode-select -s "/Applications/Xcode_$XCODE_VERSION.app"
+            xcodebuild -downloadPlatform iOS -buildVersion "$IOS_RUNTIME"
+          fi
+
+      # The UI tests stay local: they need the backend, CI has no keys for it.
+      - name: iOS gates
+        run: tools/check.sh ios
+
+      - name: Upload the differing snapshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-snapshot-failures
+          path: iosApp/build/check/snapshot-failures/
+          retention-days: 7

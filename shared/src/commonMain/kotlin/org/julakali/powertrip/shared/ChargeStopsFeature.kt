@@ -1,0 +1,124 @@
+package org.julakali.powertrip.shared
+
+import org.julakali.powertrip.shared.core.CourseTracker
+import org.julakali.powertrip.shared.domain.EnergyState
+import org.julakali.powertrip.shared.domain.Fix
+import org.julakali.powertrip.shared.domain.LocationSource
+import org.julakali.powertrip.shared.domain.SoCSource
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingCommand
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.cancellation.CancellationException
+
+/**
+ * Where the vehicle is, which way it's heading and how full its battery is —
+ * one per location source: the phone's, and one per car session.
+ *
+ * Lifecycle: [start] allows listening, [close] ends it for good.
+ */
+class ChargeStopsFeature(
+    private val locationSource: LocationSource,
+    private val socSource: SoCSource? = null,
+    /** [close] cancels only the feature's own child of it. */
+    parentScope: CoroutineScope,
+    /** Called by [close]. */
+    private val onClose: () -> Unit = {},
+    /** When the location source is listened to, counted in collectors of [currentFix]. */
+    private val locationSharing: SharingStarted = SharingStarted.Eagerly,
+) {
+
+    private val scope = parentScope.childScope()
+
+    private val courseTracker = CourseTracker()
+
+    // Guards the course tracker against locate() running alongside the stream.
+    private val fixMutex = Mutex()
+
+    private val mutableFix = MutableStateFlow<Fix?>(null)
+
+    /** Last location fix, with the best course known. Stays at the last one while [locationSharing] has stopped the source. */
+    val currentFix: StateFlow<Fix?> = mutableFix.asStateFlow()
+
+    private val mutableEnergy = MutableStateFlow<EnergyState?>(null)
+
+    /** Latest combined charge state: the car's measurement when it delivers one, otherwise the manual entry. */
+    val currentEnergy: StateFlow<EnergyState?> = mutableEnergy.asStateFlow()
+
+    private val mutableLocationFailed = MutableStateFlow(false)
+
+    /** The location stream ended with an error — usually missing permission or location services off. */
+    val locationFailed: StateFlow<Boolean> = mutableLocationFailed.asStateFlow()
+
+    private var locationJob: Job? = null
+    private var sensorJob: Job? = null
+
+    /** Starts tracking charge state, and location as far as [locationSharing] asks for it. Idempotent. */
+    fun start() {
+        if (sensorJob?.isActive != true) {
+            sensorJob = scope.launch {
+                socSource?.energy?.collect { mutableEnergy.value = it }
+            }
+        }
+        // A failed stream is retried: the permission may have been granted since.
+        if (locationJob?.isActive != true || mutableLocationFailed.value) {
+            locationJob?.cancel()
+            mutableLocationFailed.value = false
+            locationJob = scope.launch {
+                locationSharing.command(mutableFix.subscriptionCount)
+                    .distinctUntilChanged()
+                    .collectLatest { command -> if (command == SharingCommand.START) collectLocation() }
+            }
+        }
+    }
+
+    /**
+     * Asks the location source for a fix right now instead of waiting for the
+     * stream's next update.
+     */
+    fun locate() {
+        scope.launch {
+            val fix = try {
+                locationSource.currentFix()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                logWarning("Could not read the current location", error)
+                null
+            }
+            fix?.let { onFix(it) }
+        }
+    }
+
+    /** Ends processing for good. The instance is unusable afterward. */
+    fun close() {
+        scope.cancel()
+        locationJob = null
+        sensorJob = null
+        onClose()
+    }
+
+    private suspend fun collectLocation() {
+        mutableLocationFailed.value = false
+        locationSource.updates
+            .catch { error ->
+                logWarning("Location stream ended", error)
+                mutableLocationFailed.value = true
+            }
+            .collect(::onFix)
+    }
+
+    private suspend fun onFix(rawFix: Fix) = fixMutex.withLock {
+        mutableFix.value = courseTracker.update(rawFix)
+    }
+}

@@ -61,7 +61,6 @@
 
     <!-- Phone UI -->
     <string name="phone_hint_car_ui">Die eigentliche Bedienung findet während der Fahrt in Android Auto statt. Diese Ansicht dient nur zur Kontrolle am Telefon.</string>
-    <string name="phone_platform_label">Plattform</string>
     <string name="phone_stops_heading">Ladestopps voraus</string>
     <string name="phone_action_refresh">Aktualisieren</string>
     <string name="phone_permission_message">Für die Anzeige der Position auf der Karte und die Routenplanung wird der Standort benötigt.</string>
@@ -188,6 +187,10 @@
     <string name="drawer_about">Über PowerTrip</string>
     <string name="drawer_legal">Impressum &amp; Datenschutz</string>
     <string name="drawer_licenses">Lizenzen</string>
+    <string name="drawer_navigation">Navigation</string>
+    <string name="drawer_navigation_app">Routen öffnen in</string>
+    <string name="navigation_app_apple_maps">Apple Karten</string>
+    <string name="navigation_app_google_maps">Google Maps</string>
     <string name="drawer_car_none">Kein Fahrzeug angelegt</string>
 
     <!-- Phone: about -->
@@ -372,14 +375,6 @@
     </plurals>
 
     <!-- iOS only: wording that differs from Android (CarPlay, no drawer) -->
-    <string name="ios_home_pill_plan">Planen</string>
+    <string name="ios_ok">OK</string>
     <string name="ios_done">Fertig</string>
-    <string name="ios_home_diagnostics">Info</string>
-    <string name="ios_plan_title">Route planen</string>
-    <string name="ios_plan_vehicle_missing">Kein Fahrzeug angelegt.</string>
-    <string name="ios_plan_failed_no_charger">Kein erreichbarer Schnelllader auf der Strecke.</string>
-    <string name="ios_trip_summary_time">%1$s unterwegs · davon %2$s laden</string>
-    <string name="ios_trip_summary_arrival">Ankunft mit %1$d%</string>
-    <string name="ios_cn_relaxed_note">Filter zu streng — sie wurden gelockert.</string>
-    <string name="ios_hint_car_ui">Die eigentliche Bedienung findet während der Fahrt in CarPlay statt. Diese Ansicht dient nur zur Kontrolle am Telefon.</string>
 </resources>

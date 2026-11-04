@@ -7,7 +7,7 @@ no matter what, so alpha has to be recovered from the pair (alpha = 1 - (white -
 import glob, struct, sys, zlib
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else "."
-GOLDENS = f"{ROOT}/ui-tests/src/screenshotTestDebug/reference/org/julakali/chargeahead/uitests/BrandPreviewsKt"
+GOLDENS = f"{ROOT}/ui-tests/src/screenshotTestDebug/reference/org/julakali/powertrip/uitests/BrandPreviewsKt"
 OUT = f"{ROOT}/phone-ui/src/main/res/drawable-nodpi/logo_powertrip_stacked.png"
 
 

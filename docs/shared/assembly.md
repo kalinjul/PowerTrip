@@ -1,6 +1,6 @@
 # State, assembly and the iOS bridge
 
-What `org.julakali.chargeahead.shared` puts together from the domain, and how
+What `org.julakali.powertrip.shared` puts together from the domain, and how
 Swift reaches it.
 
 ```kotlin
@@ -56,9 +56,10 @@ expect fun currentTimeMillis(): Long
 The iOS framework is called **`Shared`** (`import Shared`) and is built with
 SKIE: a `StateFlow` arrives in Swift as an `AsyncSequence`, `suspend` as
 `async`, Kotlin enums and sealed types as Swift enums. The app delegate builds
-the graph once at launch with `IosEntryPointsKt.startChargeAhead(backendBaseUrl:backendToken:)`;
+the graph once at launch with `IosEntryPointsKt.startPowerTrip(backendBaseUrl:backendToken:)`;
 after that Swift creates a feature through `IosEntryPointsKt.createChargeStopsFeature()`
-and the phone screens' ViewModels through `PhoneViewModels` (both in
+and the phone screens' ViewModels through `PhoneViewModels` (one accessor per
+ViewModel, both in
 `iosMain`). A SwiftUI view holds them in a `ViewModelOwner` (`@StateObject`,
 clears them on `deinit`) and reads `uiState` with SKIE's `Observing`. CarPlay
 still goes through `ChargeStopsWatcher` until #152.

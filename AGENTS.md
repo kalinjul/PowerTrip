@@ -12,7 +12,7 @@ next reachable charging stations ahead while driving. Shared logic in Kotlin
 Multiplatform, car UI native twice.
 
 The app determines the location, searches ahead (a sector in the direction
-of travel, or the strip along a planned route), queries the ChargeAhead
+of travel, or the strip along a planned route), queries the PowerTrip
 backend, and classifies the results against the remaining range. The driver
 picks the car from the backend's catalog or types it in, and enters the
 charge level unless the car reports it. Without a car or a charge level,
@@ -146,6 +146,10 @@ python3 <skill-dir>/scripts/gradle_run.py run --workflow <id> --scope targeted \
 be a real verification question; quote it and its answer when reporting.
 The wrapper adds `--console=plain --no-scan` itself.
 
+`tools/check.sh` is the other exception: it runs whole gate sets, Gradle
+and Xcode alike. Redirect its log to the scratchpad and read the summary
+lines.
+
 The Swift check stays outside the wrapper, because it isn't Gradle:
 
 ```bash
@@ -240,7 +244,7 @@ What it contains is documented next to the code it describes:
 - [docs/shared/domain-model.md](docs/shared/domain-model.md) — sites, stops,
   vehicles and the garage, search areas and routes
 - [docs/shared/data-layer.md](docs/shared/data-layer.md) — data sources,
-  repositories, the ChargeAhead backend, verifying a data source
+  repositories, the PowerTrip backend, verifying a data source
 - [docs/shared/use-cases.md](docs/shared/use-cases.md) — interactors and
   observers
 - [docs/shared/assembly.md](docs/shared/assembly.md) — `ChargeStopsFeature`,
@@ -259,7 +263,7 @@ The rules that hold everywhere:
   `AppCoroutineDispatchers` and `get<CoroutineScope>(AppScope)`; never
   `CoroutineScope(...)` or `Dispatchers.*` outside the Koin module.
 - **One settings file per process**, opened once by `settingsModule { … }`.
-- **The ChargeAhead backend is required.** The app stops at startup without
+- **The PowerTrip backend is required.** The app stops at startup without
   it, and always runs against the current backend: a field the backend sends
   is required in the app, even when `api-model` declares it optional. Base
   URL and token never go into the repository (`local.properties`,
@@ -270,7 +274,7 @@ The rules that hold everywhere:
 ## Rules for the phone UI
 
 Every screen's state lives in a **ViewModel in
-`shared/src/commonMain/kotlin/org/julakali/chargeahead/shared/ui/`**, publishing one
+`shared/src/commonMain/kotlin/org/julakali/powertrip/shared/ui/`**, publishing one
 `uiState: StateFlow<XUiState>`; the Compose screen is stateless and takes
 that state plus lambdas. The pattern is the MVI-like one from "Now in
 Android"; the rules, the template and the test setup are in the
@@ -388,31 +392,31 @@ called in Swift.
 ### On a Mac with Xcode — the whole app builds
 
 There the framework links and Swift compiles against the real header, so
-everything above that stays unverified on Linux gets checked: `xcodegen
-generate`, then the `xcodebuild` command from `iosApp/README.md`. It
-replaces `tools/check-swift.sh`.
+everything above that stays unverified on Linux gets checked:
+`tools/check.sh ios` generates the project, builds and tests it. It replaces
+`tools/check-swift.sh`, and CI runs the same on a Mac runner.
 
 ## Before reporting something as done
 
-1. `./gradlew :androidApp:assembleDebug` completes — show the output, don't
-   just claim it.
-2. `./gradlew :shared:jvmTest` completes.
-2b. `./gradlew :ui-tests:testDebugUnitTest` and `tools/screenshots.sh validate`
-   complete, if `phone-ui/` or `ui-tests/` was touched. A screenshot that
-   changed on purpose is re-recorded with `tools/screenshots.sh update` and the
-   PNG committed — goldens only match where they were rendered, see
-   docs/testing.md.
-3. `./gradlew :shared:compileKotlinIosSimulatorArm64` completes, if
-   `shared/` was touched. This is mandatory, not optional: otherwise
-   `commonMain` is only checked against JVM and Android, and Kotlin/Native
-   is stricter.
-4. `tools/check-swift.sh` completes, if Swift files were touched (on a
-   Mac: the `xcodebuild` from `iosApp/README.md`). If
-   `swiftc` isn't installed, the script exits with code 127 — then the
-   Swift files are **also not** syntactically checked, and that must be
-   reported as such.
-5. No file outside the assigned directory was touched.
-6. Anything that couldn't be built or checked is named explicitly as
+1. `tools/check.sh` completes — show the output, don't just claim it. It
+   runs the gates of the app the change touches, the same ones CI runs:
+   - **Android:** every module compiles; shared, phone and car tests; the
+     goldens in the container.
+   - **iOS:** Kotlin/Native tests; the app and its test bundles build,
+     Swift warnings being errors; snapshot goldens on the pinned simulator;
+     the XCUITest when `iosApp/Secrets.xcconfig` exists.
+
+   Shared code wakes both. `tools/check.sh sides` says which apps a change
+   touches.
+2. A screenshot that changed on purpose is re-recorded with
+   `tools/check.sh --record` and the PNG committed. Goldens only match where
+   they were rendered, see docs/testing.md.
+3. Without Xcode, the iOS part shrinks to `:shared:compileKotlinIosSimulatorArm64`
+   and `tools/check-swift.sh`, and `check.sh` says what it skipped. Those
+   are **unverified** until CI's Mac has run them. If `swiftc` is missing
+   too, the Swift files are not even syntax-checked; report that as well.
+4. No file outside the assigned directory was touched.
+5. Anything that couldn't be built or checked is named explicitly as
    unverified.
 
 Don't claim something works when it was only written.

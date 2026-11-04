@@ -1,0 +1,193 @@
+package org.julakali.powertrip.shared.db
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.RawQuery
+import androidx.room.RoomRawQuery
+import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
+import org.julakali.powertrip.shared.domain.BoundingBox
+
+data class TileIndex(val tileLat: Long, val tileLon: Long)
+
+@Dao
+interface ChargeSiteDao {
+
+    @Query("SELECT EXISTS(SELECT 1 FROM chargeSite WHERE lat BETWEEN :south AND :north AND lon BETWEEN :west AND :east)")
+    suspend fun hasSitesInBox(south: Double, north: Double, west: Double, east: Double): Boolean
+
+    @Query("SELECT * FROM chargeSite WHERE id IN (:ids)")
+    suspend fun sitesById(ids: List<String>): List<ChargeSiteEntity>
+
+    @RawQuery(observedEntities = [ChargeSiteEntity::class])
+    fun observeSites(query: RoomRawQuery): Flow<List<ChargeSiteEntity>>
+
+    /** Every site in at least one of [boxes], each site once. */
+    fun observeSitesInBoxes(boxes: List<BoundingBox>): Flow<List<ChargeSiteEntity>> {
+        require(boxes.isNotEmpty()) { "A query needs at least one box" }
+        val where = boxes.joinToString(" OR ") { "(lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?)" }
+        return observeSites(
+            RoomRawQuery("SELECT * FROM chargeSite WHERE $where") { statement ->
+                boxes.forEachIndexed { index, box ->
+                    val first = index * 4 + 1
+                    statement.bindDouble(first, box.south)
+                    statement.bindDouble(first + 1, box.north)
+                    statement.bindDouble(first + 2, box.west)
+                    statement.bindDouble(first + 3, box.east)
+                }
+            },
+        )
+    }
+
+    /**
+     * Slow mode: every site whose strongest connector is below [slowBelowKw].
+     * Otherwise: DC sites from [minPowerKw] up, restricted to [networkKeys]
+     * when [filterNetworks] is set.
+     */
+    @Query(
+        "SELECT * FROM chargeSite WHERE lat BETWEEN :south AND :north AND lon BETWEEN :west AND :east " +
+            "AND ((:slowMode AND maxPowerKw < :slowBelowKw) " +
+            "OR (NOT :slowMode AND maxDcPowerKw >= :minPowerKw " +
+            "AND (NOT :filterNetworks OR networkKey IN (:networkKeys))))",
+    )
+    fun observeFilteredSitesInBox(
+        south: Double,
+        north: Double,
+        west: Double,
+        east: Double,
+        slowMode: Boolean,
+        slowBelowKw: Double,
+        minPowerKw: Double,
+        filterNetworks: Boolean,
+        networkKeys: List<String>,
+    ): Flow<List<ChargeSiteEntity>>
+
+    /**
+     * The same filter, the [limit] rows nearest to ([lat], [lon]) first. Squared degree
+     * deltas are order-preserving within a small box; [lonScale] is cos² of the latitude.
+     */
+    @Query(
+        "SELECT * FROM chargeSite WHERE lat BETWEEN :south AND :north AND lon BETWEEN :west AND :east " +
+            "AND ((:slowMode AND maxPowerKw < :slowBelowKw) " +
+            "OR (NOT :slowMode AND maxDcPowerKw >= :minPowerKw " +
+            "AND (NOT :filterNetworks OR networkKey IN (:networkKeys)))) " +
+            "ORDER BY (lat - :lat) * (lat - :lat) + (lon - :lon) * (lon - :lon) * :lonScale " +
+            "LIMIT :limit",
+    )
+    fun observeNearestFilteredSitesInBox(
+        south: Double,
+        north: Double,
+        west: Double,
+        east: Double,
+        slowMode: Boolean,
+        slowBelowKw: Double,
+        minPowerKw: Double,
+        filterNetworks: Boolean,
+        networkKeys: List<String>,
+        lat: Double,
+        lon: Double,
+        lonScale: Double,
+        limit: Int,
+    ): Flow<List<ChargeSiteEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSites(sites: List<ChargeSiteEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun markTilesFetched(tiles: List<TileCoverageEntity>)
+
+    @Insert
+    suspend fun markCorridorsFetched(corridors: List<CorridorCoverageEntity>)
+
+    /** One fetch, one transaction: sites and their coverage land together or not at all. */
+    @Transaction
+    suspend fun recordFetch(
+        sites: List<ChargeSiteEntity>,
+        tiles: List<TileCoverageEntity>,
+        corridors: List<CorridorCoverageEntity>,
+    ) {
+        upsertSites(sites)
+        markTilesFetched(tiles)
+        markCorridorsFetched(corridors)
+    }
+
+    // Fresh tiles within a tile range.
+    @Query(
+        "SELECT tileLat, tileLon FROM tileCoverage WHERE sourceId = :sourceId " +
+            "AND networkKey = :networkKey " +
+            "AND tileLat BETWEEN :minTileLat AND :maxTileLat " +
+            "AND tileLon BETWEEN :minTileLon AND :maxTileLon " +
+            "AND fetchedAtMillis > :notOlderThanMillis",
+    )
+    suspend fun freshTilesIn(
+        sourceId: String,
+        networkKey: String,
+        minTileLat: Long,
+        maxTileLat: Long,
+        minTileLon: Long,
+        maxTileLon: Long,
+        notOlderThanMillis: Long,
+    ): List<TileIndex>
+
+    // Fresh corridors whose box overlaps the given one.
+    @Query(
+        "SELECT * FROM corridorCoverage WHERE sourceId = :sourceId " +
+            "AND networkKey = :networkKey " +
+            "AND south <= :north AND north >= :south AND west <= :east AND east >= :west " +
+            "AND fetchedAtMillis > :notOlderThanMillis",
+    )
+    suspend fun freshCorridorsIn(
+        sourceId: String,
+        networkKey: String,
+        south: Double,
+        west: Double,
+        north: Double,
+        east: Double,
+        notOlderThanMillis: Long,
+    ): List<CorridorCoverageEntity>
+
+    @Query("DELETE FROM tileCoverage WHERE sourceId = :sourceId")
+    suspend fun clearTileCoverage(sourceId: String)
+
+    @Query("DELETE FROM corridorCoverage WHERE sourceId = :sourceId")
+    suspend fun clearCorridorCoverage(sourceId: String)
+
+    /** Discards coverage, not the sites themselves: the store stays readable. */
+    @Transaction
+    suspend fun clearCoverage(sourceId: String) {
+        clearTileCoverage(sourceId)
+        clearCorridorCoverage(sourceId)
+    }
+
+    @Query("DELETE FROM tileCoverage WHERE fetchedAtMillis <= :olderThanMillis")
+    suspend fun pruneStaleTiles(olderThanMillis: Long)
+
+    @Query("DELETE FROM corridorCoverage WHERE fetchedAtMillis <= :olderThanMillis")
+    suspend fun pruneStaleCorridors(olderThanMillis: Long)
+
+    @Transaction
+    suspend fun pruneStaleCoverage(olderThanMillis: Long) {
+        pruneStaleTiles(olderThanMillis)
+        pruneStaleCorridors(olderThanMillis)
+    }
+
+    @Query("DELETE FROM tileCoverage WHERE networkKey NOT IN (:keys)")
+    suspend fun pruneTilesNotIn(keys: List<String>)
+
+    @Query("DELETE FROM corridorCoverage WHERE networkKey NOT IN (:keys)")
+    suspend fun pruneCorridorsNotIn(keys: List<String>)
+
+    @Transaction
+    suspend fun pruneCoverageNotIn(keys: List<String>) {
+        pruneTilesNotIn(keys)
+        pruneCorridorsNotIn(keys)
+    }
+
+    @Query("DELETE FROM chargeSite WHERE fetchedAtMillis <= :olderThanMillis")
+    suspend fun pruneStaleSites(olderThanMillis: Long)
+
+    @Query("DELETE FROM chargeSite")
+    suspend fun clearAll()
+}

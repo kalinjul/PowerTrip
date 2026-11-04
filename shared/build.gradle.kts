@@ -16,7 +16,7 @@ plugins {
 
 compose.resources {
     publicResClass = true
-    packageOfResClass = "org.julakali.chargeahead.shared.resources"
+    packageOfResClass = "org.julakali.powertrip.shared.resources"
 }
 
 skie {
@@ -30,7 +30,7 @@ kotlin {
     // Since AGP 9, com.android.library is incompatible with KMP; the Android
     // target is configured through the dedicated KMP library plugin inside kotlin {}.
     androidLibrary {
-        namespace = "org.julakali.chargeahead.shared"
+        namespace = "org.julakali.powertrip.shared"
         compileSdk = libs.versions.compileSdk.get().toInt()
         minSdk = libs.versions.minSdk.get().toInt()
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
@@ -98,8 +98,8 @@ kotlin {
             // DataStore, so androidApp needs the type to build one.
             api(libs.androidx.datastore.preferences)
 
-            api(libs.chargeahead.api.model)
-            implementation(libs.chargeahead.vehicle.model)
+            api(libs.powertrip.api.model)
+            implementation(libs.powertrip.vehicle.model)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

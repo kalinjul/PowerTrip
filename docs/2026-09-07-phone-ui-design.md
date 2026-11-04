@@ -1,4 +1,4 @@
-# ChargeAhead — EV charging route planner
+# PowerTrip — EV charging route planner
 
 *2026-09-07 · the repo that will grow into the Kotlin Multiplatform app, directory `chargeahead`.*
 

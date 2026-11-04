@@ -27,7 +27,7 @@ fun secret(propertyName: String, environmentName: String): String =
 val googleMapsApiKey: String = secret("googleMapsApiKey", "GOOGLE_MAPS_API_KEY")
 
 /**
- * The ChargeAhead backend, which the app cannot run without. Missing values
+ * The PowerTrip backend, which the app cannot run without. Missing values
  * still build, so CI needs no secrets; the app then stops at startup.
  */
 val chargeAheadBaseUrl: String = secret("chargeAheadBaseUrl", "CHARGEAHEAD_BASE_URL")
@@ -62,7 +62,7 @@ plugins {
 }
 
 android {
-    namespace = "org.julakali.chargeahead.android"
+    namespace = "org.julakali.powertrip.android"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
