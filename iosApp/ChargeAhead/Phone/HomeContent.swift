@@ -263,8 +263,8 @@ private struct ModeGlow: View {
     var body: some View {
         if mode != .normal {
             Rectangle()
-                .strokeBorder(Brand.mode(mode), lineWidth: 36)
-                .blur(radius: 28)
+                .strokeBorder(Brand.mode(mode), lineWidth: 18)
+                .blur(radius: 14)
                 .phaseAnimator([0.75, 1.0]) { glow, breath in
                     glow.opacity(breath)
                 } animation: { _ in
