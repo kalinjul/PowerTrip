@@ -40,8 +40,8 @@ packages:
     exactVersion: 1.19.6
 
 configFiles:
-  # If the file doesn't exist, XcodeGen ignores the entry — the build then
-  # succeeds, but the app stops at launch without a backend.
+  # XcodeGen fails if the file doesn't exist; an empty one builds an app that
+  # stops at launch without a backend.
   Debug: Secrets.xcconfig
   Release: Secrets.xcconfig
 
