@@ -44,7 +44,7 @@ struct SearchBar: View {
         }
         .padding(.horizontal, 14)
         .frame(height: RoundButton.size)
-        .glassBackground(in: Capsule())
+        .floatingSurface(in: Capsule())
         .onChange(of: focused.wrappedValue) { _, isFocused in
             if isFocused && !expanded { onOpen() }
         }
@@ -92,7 +92,7 @@ struct DestinationHeader: View {
         .padding(.leading, 18)
         .padding(.trailing, 2)
         .frame(height: RoundButton.size)
-        .glassBackground(in: Capsule())
+        .floatingSurface(in: Capsule())
     }
 }
 

@@ -88,14 +88,10 @@ extension View {
         modifier(BrandProminent())
     }
 
-    /// Liquid Glass where the system has it, a material elsewhere.
-    @ViewBuilder
-    func glassBackground<S: Shape>(in shape: S) -> some View {
-        if #available(iOS 26, *) {
-            glassEffect(.regular.interactive(), in: shape)
-        } else {
-            background(.regularMaterial, in: shape)
-        }
+    /// Controls over the map: an opaque surface, so they read on any map.
+    func floatingSurface<S: Shape>(in shape: S) -> some View {
+        background(Color(.secondarySystemGroupedBackground), in: shape)
+            .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
     }
 }
 

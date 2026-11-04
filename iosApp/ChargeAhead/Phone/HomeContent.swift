@@ -106,7 +106,7 @@ struct HomeContent<MapLayer: View, Compass: View>: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 14)
-                .glassBackground(in: RoundedRectangle(cornerRadius: 16))
+                .floatingSurface(in: RoundedRectangle(cornerRadius: 16))
             }
         }
         .onChange(of: searching) { _, open in searchFocused = open }
@@ -210,7 +210,7 @@ struct RoundButton: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .glassBackground(in: Circle())
+        .floatingSurface(in: Circle())
         .accessibilityLabel(label)
     }
 }
@@ -237,7 +237,7 @@ private struct HomePill: View {
         }
         .buttonStyle(.plain)
         .opacity(isEnabled ? 1 : 0.45)
-        .glassBackground(in: Capsule())
+        .floatingSurface(in: Capsule())
     }
 }
 
@@ -252,7 +252,7 @@ struct HintChip: View {
             .multilineTextAlignment(.center)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .glassBackground(in: Capsule())
+            .floatingSurface(in: Capsule())
     }
 }
 
