@@ -22,6 +22,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -49,6 +50,7 @@ class ActiveRouteScreenTest {
     private class Calls {
         var openedStop: PlannedStop? = null
         var sentToMaps = false
+        var sentDestinationToMaps = false
         var replanned = false
         var ended = false
         var toggledSelecting = false
@@ -74,6 +76,7 @@ class ActiveRouteScreenTest {
                     onSendToMaps = { calls.sentToMaps = true },
                     onReplan = { calls.replanned = true },
                     onEnd = { calls.ended = true },
+                    onSendDestinationToMaps = { calls.sentDestinationToMaps = true },
                     socInput = socInput,
                 )
             }
@@ -137,6 +140,14 @@ class ActiveRouteScreenTest {
         val calls = screen()
         compose.onNodeWithText(Fixtures.stopKassel.site.operator!!, substring = true).performClick()
         assertEquals(Fixtures.stopKassel, calls.openedStop)
+    }
+
+    @Test
+    fun `tapping the destination sends it to maps`() {
+        val calls = screen()
+        compose.onNodeWithText("München").performClick()
+        assertTrue(calls.sentDestinationToMaps)
+        assertFalse(calls.sentToMaps)
     }
 
     @Test
