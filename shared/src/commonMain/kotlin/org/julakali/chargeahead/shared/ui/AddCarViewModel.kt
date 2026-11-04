@@ -9,6 +9,7 @@ import org.julakali.chargeahead.shared.domain.usecases.SelectVehicleInteractor
 import org.julakali.chargeahead.shared.domain.usecases.VehiclePresetsObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -20,6 +21,13 @@ data class AddCarUiState(
     val matches: List<VehiclePreset> = emptyList(),
 )
 
+/** The screen leaves on these, once the car is stored; leaving earlier would cancel the write. */
+sealed interface AddCarEvent {
+    data object PresetAdded : AddCarEvent
+
+    data object CustomCreated : AddCarEvent
+}
+
 /** The add-car screen: search the catalog, tap to add. */
 class AddCarViewModel(
     private val observePresets: VehiclePresetsObserver,
@@ -27,6 +35,9 @@ class AddCarViewModel(
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
+    private val events = MutableStateFlow<AddCarEvent?>(null)
+
+    val event: StateFlow<AddCarEvent?> = events.asStateFlow()
 
     val uiState: StateFlow<AddCarUiState> = combine(query, observePresets.flow) { query, matches ->
         AddCarUiState(query = query, matches = matches)
@@ -43,10 +54,20 @@ class AddCarViewModel(
 
     /** Adds the preset and selects it. */
     fun onPresetAdded(preset: VehiclePreset) {
-        viewModelScope.launch { selectVehicle(SelectVehicleInteractor.Params(preset.toProfile())) }
+        viewModelScope.launch {
+            selectVehicle(SelectVehicleInteractor.Params(preset.toProfile()))
+                .onSuccess { events.value = AddCarEvent.PresetAdded }
+        }
     }
 
     fun onCustomCarCreated(name: String) {
-        viewModelScope.launch { selectVehicle(SelectVehicleInteractor.Params(customVehicle(name))) }
+        viewModelScope.launch {
+            selectVehicle(SelectVehicleInteractor.Params(customVehicle(name)))
+                .onSuccess { events.value = AddCarEvent.CustomCreated }
+        }
+    }
+
+    fun onEventHandled() {
+        events.value = null
     }
 }

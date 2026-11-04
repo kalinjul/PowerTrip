@@ -41,4 +41,12 @@ class AddCarViewModelTest {
         assertEquals(setOf(ConnectorType.CCS2, ConnectorType.TYPE2), car.acceptedConnectors)
         assertEquals(listOf(car.id), vehicles.vehicles.first().map { it.id })
     }
+
+    @Test
+    fun `the screen is told to leave only once the car is stored`() = runBlocking<Unit> {
+        viewModel.onCustomCarCreated("Fiat 500e")
+
+        withTimeout(5_000) { viewModel.event.first { it == AddCarEvent.CustomCreated } }
+        assertEquals("Fiat 500e", vehicles.vehicle.first()?.displayName)
+    }
 }

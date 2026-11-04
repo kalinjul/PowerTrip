@@ -389,17 +389,21 @@ struct AddCarView: View {
             AddCarContent(
                 state: state,
                 query: $query,
-                onPresetAdded: {
-                    addCar.onPresetAdded(preset: $0)
-                    dismiss()
-                },
-                onCustomCreated: {
-                    addCar.onCustomCarCreated(name: $0)
-                    onCustomCreated()
-                }
+                onPresetAdded: { addCar.onPresetAdded(preset: $0) },
+                onCustomCreated: { addCar.onCustomCarCreated(name: $0) }
             )
         }
         .onChange(of: query) { _, text in owner.viewModels.addCar().onQueryChanged(query: text) }
+        .task {
+            for await event in addCar.event {
+                guard let event else { continue }
+                addCar.onEventHandled()
+                switch onEnum(of: event) {
+                case .presetAdded: dismiss()
+                case .customCreated: onCustomCreated()
+                }
+            }
+        }
     }
 }
 
