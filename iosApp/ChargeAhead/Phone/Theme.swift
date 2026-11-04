@@ -74,9 +74,9 @@ struct RankBadge: View {
 /// The brand mark and wordmark, small and grey, signing off the settings like a copyright line.
 struct BrandSignature: View {
     var body: some View {
-        HStack(spacing: 8) {
-            Image("PowertripMark").resizable().scaledToFit().frame(height: 12)
-            Image("PowertripWordmark").resizable().scaledToFit().frame(height: 16)
+        HStack(spacing: 10) {
+            Image("PowertripMark").resizable().scaledToFit().frame(height: 18)
+            Image("PowertripWordmark").resizable().scaledToFit().frame(height: 24)
                 .accessibilityLabel(localized("app_name"))
         }
         .saturation(0)
