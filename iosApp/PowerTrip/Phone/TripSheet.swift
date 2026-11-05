@@ -11,6 +11,8 @@ struct TripActions {
     /// `nil` makes the start row read-only.
     var startSocEdit: (() -> Void)?
     var arrivalSocEdit: (() -> Void)?
+    /// A tap on a destination row that edits no charge level; `nil` leaves it inert.
+    var destinationOpened: (() -> Void)?
 
     static let none = TripActions()
 }
@@ -257,7 +259,7 @@ struct StopRail: View {
                 temperatureC: plan.route.destinationTemperatureC?.doubleValue,
                 selected: picked(last),
                 editDescription: actions.arrivalSocEdit.map { _ in localized("trip_arrival_soc_edit") },
-                onTap: selection.selecting ? { actions.pointPicked(last) } : actions.arrivalSocEdit
+                onTap: selection.selecting ? { actions.pointPicked(last) } : (actions.arrivalSocEdit ?? actions.destinationOpened)
             )
             if let attribution = plan.route.endTemperaturesAttribution {
                 Text(attribution)

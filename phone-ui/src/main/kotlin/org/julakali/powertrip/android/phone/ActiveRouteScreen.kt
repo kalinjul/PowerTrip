@@ -103,6 +103,7 @@ fun ActiveRouteRoute(
             onSectionSent = viewModel::onSectionSent,
             onOpenStop = onOpenStop,
             onSendToMaps = { uiState.mapsUrl?.let(onSendToMaps) },
+            onSendDestinationToMaps = { uiState.destinationMapsUrl?.let(onSendToMaps) },
             onReplan = viewModel::onReplanRequested,
             onEnd = viewModel::endTrip,
             canReplan = uiState.canReplan,
@@ -134,6 +135,8 @@ fun ActiveRouteScreen(
     onReplan: () -> Unit,
     onEnd: () -> Unit,
     modifier: Modifier = Modifier,
+    /** A tap on the destination row: navigation straight there. */
+    onSendDestinationToMaps: () -> Unit = {},
     /** Off without a position to plan from. */
     canReplan: Boolean = true,
     /** The charge-level prompt before re-planning; `null` while closed. */
@@ -221,6 +224,7 @@ fun ActiveRouteScreen(
             socEditing = null,
             modifier = Modifier.weight(1f),
             departure = departure,
+            onOpenDestination = onSendDestinationToMaps,
         )
     }
 }

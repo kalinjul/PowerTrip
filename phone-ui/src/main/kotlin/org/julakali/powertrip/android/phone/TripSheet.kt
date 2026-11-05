@@ -117,6 +117,7 @@ import org.julakali.powertrip.shared.resources.trip_summary_charging
 import org.julakali.powertrip.shared.resources.trip_temperature
 import org.julakali.powertrip.shared.resources.trip_summary_distance
 import org.julakali.powertrip.shared.resources.trip_summary_stops
+import org.julakali.powertrip.shared.resources.phone_detail_navigate
 import org.julakali.powertrip.shared.resources.trip_tile_arrival
 import org.julakali.powertrip.shared.resources.trip_tile_charge
 import org.julakali.powertrip.shared.forUi
@@ -163,6 +164,8 @@ fun TripSheetContent(
     modifier: Modifier = Modifier,
     /** What the stop and arrival times count from: now for a plan, the commit for a trip under way. */
     departure: LocalTime = LocalNow.current(),
+    /** A tap on a destination row that edits no charge level; `null` leaves it inert. */
+    onOpenDestination: (() -> Unit)? = null,
 ) {
     val selecting = selection.selecting
     val selectionA = selection.a
@@ -282,6 +285,7 @@ fun TripSheetContent(
                     onOpenStop = onOpenStop,
                     socEditing = socEditing,
                     departure = departure,
+                    onOpenDestination = onOpenDestination,
                     modifier = Modifier.fillMaxSize(),
                 )
                 TripListLayout.TILES -> StopTiles(
@@ -340,6 +344,7 @@ private fun StopCards(
     onOpenStop: (PlannedStop) -> Unit,
     socEditing: SocEditing?,
     departure: LocalTime,
+    onOpenDestination: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val selecting = selection.selecting
@@ -383,8 +388,9 @@ private fun StopCards(
                     level = plan.arrivalSocPercent,
                     temperatureC = plan.route.destinationTemperatureC,
                     selected = picked(last),
-                    onClick = if (selecting) ({ onPickPoint(last) }) else socEditing?.onEditArrivalSoc,
+                    onClick = if (selecting) ({ onPickPoint(last) }) else socEditing?.onEditArrivalSoc ?: onOpenDestination,
                     editDescription = socEditing?.let { stringResource(Res.string.trip_arrival_soc_edit) },
+                    onClickLabel = if (socEditing == null && onOpenDestination != null) stringResource(Res.string.phone_detail_navigate) else null,
                 )
             }
         }
@@ -414,6 +420,7 @@ private fun EndRow(
     levelUnknown: String? = null,
     temperatureC: Double? = null,
     selected: Boolean = false,
+    onClickLabel: String? = null,
 ) {
     val hasSecondLine = level != null || levelUnknown != null || temperatureC != null
     Column(
@@ -422,7 +429,7 @@ private fun EndRow(
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
             .then(if (selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.clickable(onClickLabel = onClickLabel, onClick = onClick) else Modifier)
             .padding(horizontal = CARD_PADDING, vertical = ROW_PADDING),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

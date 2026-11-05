@@ -161,6 +161,8 @@ ios_gates() {
   udid="$(check_simulator)"
   # A simulator still booting refuses to launch the test runner ("failed preflight checks").
   xcrun simctl bootstatus "$udid" -b >/dev/null
+  # XcodeGen refuses a missing config file; CI has no backend keys, so it builds against an empty one.
+  if [ -n "${CI:-}" ] && [ ! -f "$IOS_DIR/Secrets.xcconfig" ]; then : > "$IOS_DIR/Secrets.xcconfig"; fi
   (cd "$IOS_DIR" && xcodegen generate --quiet)
   local xcode=(-project "$IOS_DIR/PowerTrip.xcodeproj" -scheme PowerTrip
     -destination "id=$udid" -derivedDataPath "$CHECK_DIR/derived" -quiet)

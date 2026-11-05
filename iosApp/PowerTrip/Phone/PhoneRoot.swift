@@ -230,6 +230,13 @@ struct PhoneRoot: View {
                     }
                 }
                 activeRoute.onSectionSent()
+            },
+            destinationOpened: {
+                if let url = committed.destinationMapsUrl(app: handoffApp) {
+                    openInMaps(url) { opened in
+                        if !opened { alert = .message(localized("phone_detail_no_navigation")) }
+                    }
+                }
             }
         )
     }

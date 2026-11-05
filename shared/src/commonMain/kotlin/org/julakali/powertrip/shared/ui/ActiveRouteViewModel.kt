@@ -15,6 +15,7 @@ import org.julakali.powertrip.shared.combine
 import org.julakali.powertrip.shared.domain.Destination
 import org.julakali.powertrip.shared.domain.CommittedTrip
 import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.MapsHandoff
 import org.julakali.powertrip.shared.domain.NavigationApp
 import org.julakali.powertrip.shared.domain.mapsUrl
 import org.julakali.powertrip.shared.domain.SectionSelection
@@ -46,6 +47,11 @@ data class ActiveRouteUiState(
     val mapsUrl: String? get() = trip?.plan?.mapsUrl(startPosition, selection)
 
     fun mapsUrl(app: NavigationApp): String? = trip?.plan?.mapsUrl(startPosition, selection, app)
+
+    /** A tap on the destination row: straight there, without the stops. */
+    val destinationMapsUrl: String? get() = destinationMapsUrl(NavigationApp.GOOGLE_MAPS)
+
+    fun destinationMapsUrl(app: NavigationApp): String? = trip?.plan?.destination?.let { MapsHandoff.navigateUrl(it.position, app) }
 }
 
 sealed interface ActiveRouteEvent {

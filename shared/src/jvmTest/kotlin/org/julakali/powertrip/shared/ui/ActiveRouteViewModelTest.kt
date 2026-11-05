@@ -20,6 +20,8 @@ import org.julakali.powertrip.shared.domain.SoCSource
 import org.julakali.powertrip.shared.domain.EnergyState
 import kotlinx.coroutines.flow.flowOf
 import org.julakali.powertrip.shared.domain.LatLon
+import org.julakali.powertrip.shared.domain.MapsHandoff
+import org.julakali.powertrip.shared.domain.NavigationApp
 import org.julakali.powertrip.shared.domain.SectionSelection
 import org.julakali.powertrip.shared.domain.LocationSource
 import org.julakali.powertrip.shared.domain.NetworkPreferences
@@ -261,6 +263,21 @@ class ActiveRouteViewModelTest {
         assertTrue(viewModel.uiState.value.mapsUrl!!.contains("48.137"))
         viewModel.onSectionSent()
         assertEquals(SectionSelection(), viewModel.uiState.value.selection)
+    }
+
+    @Test
+    fun `the destination url leads straight to the destination, whatever section is picked`() = runBlocking {
+        commitFromHamburg()
+        val viewModel = viewModel()
+        viewModel.uiState.first { it.trip != null }
+        viewModel.onSectionSelectingToggled()
+        viewModel.onSectionPointPicked(0)
+        viewModel.onSectionPointPicked(1)
+
+        val destination = plan(hamburg).destination.position
+        val state = viewModel.uiState.value
+        assertEquals(MapsHandoff.navigateUrl(destination), state.destinationMapsUrl)
+        assertEquals(MapsHandoff.navigateUrl(destination, NavigationApp.APPLE_MAPS), state.destinationMapsUrl(NavigationApp.APPLE_MAPS))
     }
 
     @Test
