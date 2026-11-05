@@ -164,8 +164,23 @@ private struct CarPager: View {
     private static let gap: CGFloat = 6
 
     var body: some View {
+        VStack(spacing: 0) {
+            cards
+            if vehicles.count > 1 {
+                PageDots(count: vehicles.count, current: shownIndex) { index in
+                    withAnimation { shownId = vehicles[index].id }
+                }
+            }
+        }
+    }
+
+    private var shownIndex: Int {
+        vehicles.firstIndex { $0.id == (shownId ?? selected.id) } ?? 0
+    }
+
+    private var cards: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: Self.gap) {
+            HStack(spacing: Self.gap) {
                 ForEach(vehicles, id: \.id) { vehicle in
                     CarCard(vehicle: vehicle, fullRangeKm: fullRangeKm[vehicle.id]?.doubleValue)
                         .accessibilityElement(children: .combine)
@@ -180,6 +195,8 @@ private struct CarPager: View {
                         .accessibilityAddTraits(vehicle.id == selected.id ? .isSelected : [])
                 }
             }
+            // Every card as tall as the tallest, so a two-line name can't make the page below jump.
+            .fixedSize(horizontal: false, vertical: true)
             .scrollTargetLayout()
         }
         .contentMargins(.horizontal, Self.inset, for: .scrollContent)
@@ -193,8 +210,66 @@ private struct CarPager: View {
             if shownId != id { withAnimation { shownId = id } }
         }
         .onChange(of: shownId) { _, id in
-            guard let id, id != selected.id, let vehicle = vehicles.first(where: { $0.id == id }) else { return }
-            onSelect(vehicle)
+            if #unavailable(iOS 18) { select(id) }
+        }
+        .modifier(SelectWhenResting { select(shownId) })
+    }
+
+    private func select(_ id: String?) {
+        guard let id, id != selected.id, let vehicle = vehicles.first(where: { $0.id == id }) else { return }
+        onSelect(vehicle)
+    }
+}
+
+/// iOS's own page dots, as on the Home Screen: they say there is more to swipe, and tapping or dragging along them switches cars.
+private struct PageDots: UIViewRepresentable {
+    let count: Int
+    let current: Int
+    let onChange: (Int) -> Void
+
+    func makeUIView(context: Context) -> UIPageControl {
+        let dots = UIPageControl()
+        dots.currentPageIndicatorTintColor = UIColor(Brand.primary)
+        dots.pageIndicatorTintColor = .tertiaryLabel
+        dots.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        dots.accessibilityIdentifier = "car-dots"
+        return dots
+    }
+
+    func updateUIView(_ dots: UIPageControl, context: Context) {
+        dots.numberOfPages = count
+        dots.currentPage = current
+        context.coordinator.onChange = onChange
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onChange: onChange)
+    }
+
+    final class Coordinator: NSObject {
+        var onChange: (Int) -> Void
+
+        init(onChange: @escaping (Int) -> Void) {
+            self.onChange = onChange
+        }
+
+        @objc func changed(_ dots: UIPageControl) {
+            onChange(dots.currentPage)
+        }
+    }
+}
+
+/// Picks the shown car once the cards have come to rest: selecting mid-slide refreshes the page under the moving cards.
+private struct SelectWhenResting: ViewModifier {
+    let select: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18, *) {
+            content.onScrollPhaseChange { _, phase in
+                if phase == .idle { select() }
+            }
+        } else {
+            content
         }
     }
 }
@@ -241,7 +316,7 @@ private struct CarCard: View {
         }
         .foregroundStyle(Brand.onPrimaryContainer)
         .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             // On the shape alone: on the whole card, every label would cast its own shadow.
             RoundedRectangle(cornerRadius: 24)

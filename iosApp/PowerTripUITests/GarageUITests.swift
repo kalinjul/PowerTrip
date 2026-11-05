@@ -41,6 +41,42 @@ final class GarageUITests: XCTestCase {
         snapshot("soc-sheet")
     }
 
+    func testTheDotsSwitchTheCar() {
+        XCTAssertTrue(app.buttons["settings"].waitForExistence(timeout: 10))
+        app.buttons["settings"].tap()
+        app.buttons["garage"].tap()
+        let earlier = addPreset(matching: "Tesla")
+        _ = addPreset(matching: "ID.3")
+
+        let dots = app.pageIndicators["car-dots"]
+        XCTAssertTrue(dots.waitForExistence(timeout: 10), "two cars, but no dots")
+        snapshot("dots")
+        // Left of the current dot means one car back.
+        dots.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
+
+        let selected = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == 'vehicle' AND isSelected == true AND label BEGINSWITH %@", earlier))
+            .firstMatch
+        XCTAssertTrue(selected.waitForExistence(timeout: 10), "the dots did not switch back to \(earlier)")
+    }
+
+    /// Adds the first catalog car whose name contains `model` and returns its name.
+    private func addPreset(matching model: String) -> String {
+        let add = app.buttons.matching(identifier: "garage-add").firstMatch
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        XCTAssertTrue(app.buttons.matching(identifier: "preset").firstMatch.waitForExistence(timeout: 20), "the catalog never arrived")
+        let search = app.searchFields.firstMatch
+        search.tap()
+        search.typeText(model)
+        let preset = app.buttons.matching(NSPredicate(format: "identifier == 'preset' AND label CONTAINS %@", model)).firstMatch
+        XCTAssertTrue(preset.waitForExistence(timeout: 10), "no \(model) in the catalog")
+        let name = preset.label.components(separatedBy: ",").first ?? ""
+        preset.tap()
+        XCTAssertTrue(add.waitForExistence(timeout: 10), "the add page did not close")
+        return name
+    }
+
     private func snapshot(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
         let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
