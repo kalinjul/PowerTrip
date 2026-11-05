@@ -7,12 +7,17 @@ import XCTest
 @MainActor
 final class TripSnapshotTests: XCTestCase {
 
-    private func sheet(_ trip: TripUiStateSheet, layout: TripListLayout = .list, height: CGFloat = 520) -> some View {
+    private func sheet(
+        _ trip: TripUiStateSheet,
+        layout: TripListLayout = .list,
+        height: CGFloat = 520,
+        startEditable: Bool = false
+    ) -> some View {
         TripSheetContent(
             trip: trip,
             layout: layout,
             now: Fixtures.now,
-            actions: TripActions(startSocEdit: {}, arrivalSocEdit: {})
+            actions: TripActions(startSocEdit: {}, startEdit: startEditable ? {} : nil, arrivalSocEdit: {})
         )
         .frame(width: 402, height: height)
         .background(Color(.systemBackground))
@@ -24,6 +29,20 @@ final class TripSnapshotTests: XCTestCase {
 
     func testListWithForecast() {
         assertLightAndDark(sheet(Fixtures.planned(Fixtures.planWithForecast), height: 600), named: "trip")
+    }
+
+    func testListStartEditable() {
+        assertLightAndDark(sheet(Fixtures.planned(), startEditable: true), named: "trip")
+    }
+
+    func testListPickedStart() {
+        let planned = Fixtures.planned(Fixtures.plan, start: Fixtures.hotel, startDistanceKm: 255)
+        assertLightAndDark(sheet(planned, startEditable: true), named: "trip")
+    }
+
+    func testNoChargerInReachPickedStart() {
+        let trip = Fixtures.unreachable(UnreachableTripNoCharger(afterKm: 0), start: Fixtures.hotel)
+        assertLightAndDark(sheet(trip, height: 290, startEditable: true), named: "trip")
     }
 
     func testListSectionPicked() {

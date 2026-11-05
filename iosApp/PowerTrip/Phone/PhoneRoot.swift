@@ -94,6 +94,8 @@ struct PhoneRoot: View {
     @State private var alert: PhoneAlert?
     @State private var command: CameraCommand?
     @State private var tripDetent: PresentationDetent = TripSheetDetents.peek
+    /// The start search is open; the trip sheet steps aside for it.
+    @State private var pickingStart = false
     @State private var navigationApp: NavigationApp = .appleMaps
 
     init() {
@@ -105,7 +107,7 @@ struct PhoneRoot: View {
     var body: some View {
         Observing(session.trip.uiState, session.activeRoute.uiState, session.phoneApp.uiState) { trip, committed, app in
             let onPage = !path.isEmpty
-            let sheetShown = (trip as? TripUiStateSheet) != nil && !onPage
+            let sheetShown = (trip as? TripUiStateSheet) != nil && !onPage && !pickingStart
             NavigationStack(path: $path) {
                 HomeScreen(
                     session: session,
@@ -114,6 +116,7 @@ struct PhoneRoot: View {
                     hasLocationPermission: app.hasLocationPermission?.boolValue,
                     query: $query,
                     command: $command,
+                    pickingStart: $pickingStart,
                     onSettings: { overlay = .settings(nil) },
                     onChargeNow: {
                         session.chargeNow.onSheetOpened()
@@ -193,6 +196,10 @@ struct PhoneRoot: View {
                             model.onSectionSent()
                         },
                         startSocEdit: { model.onStartSocEditRequested() },
+                        startEdit: {
+                            pickingStart = true
+                            session.search.onStartSearchOpened()
+                        },
                         arrivalSocEdit: { model.onArrivalSocEditRequested() }
                     )
                 )
@@ -253,6 +260,7 @@ struct PhoneRoot: View {
             switch onEnum(of: event) {
             case .sheetReady:
                 query = ""
+                pickingStart = false
                 session.search.onClosed()
                 tripDetent = TripSheetDetents.peek
             case .vehicleMissing:
@@ -292,6 +300,7 @@ private struct HomeScreen: View {
     let hasLocationPermission: Bool?
     @Binding var query: String
     @Binding var command: CameraCommand?
+    @Binding var pickingStart: Bool
     let onSettings: () -> Void
     let onChargeNow: () -> Void
     let onActiveRoute: () -> Void
@@ -330,12 +339,25 @@ private struct HomeScreen: View {
                         },
                         searchClosed: {
                             query = ""
+                            pickingStart = false
                             search.onClosed()
                         },
                         picked: { row in
+                            let forStart = searchState.target == .start
                             query = ""
+                            pickingStart = false
                             search.onClosed()
-                            session.trip.plan(destination: row.destination, socPercent: nil)
+                            if forStart {
+                                session.trip.onStartPicked(place: row.destination)
+                            } else {
+                                session.trip.plan(destination: row.destination, socPercent: nil)
+                            }
+                        },
+                        currentPositionPicked: {
+                            query = ""
+                            pickingStart = false
+                            search.onClosed()
+                            session.trip.onStartPicked(place: nil)
                         },
                         tripCleared: { session.trip.clear() },
                         destinationTapped: { moveCamera(to: plan != nil ? .route : sheet.map { .position($0.destination.position, meters: 20_000) }) },

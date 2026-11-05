@@ -113,7 +113,12 @@ interface CarDiagnosticsRepository {              // what the car last reported,
 // keeps the reference, without connectors, address or tariffs. When the
 // store is current along the route and still lacks it, the stop is marked
 // siteMissing and TripPlan.needsReplan tells the screens to say so.
-data class TripState(val destination: Destination?, val planned: TripPlan?, val committed: CommittedTrip?, val unreachable: UnreachableTrip?)
+// start is a place the driver picked instead of the current position. It
+// carries over to new destinations only in the process that picked it;
+// dismissing or committing the plan drops it, and the car never plans from it.
+data class TripState(val destination: Destination?, val planned: TripPlan?, val committed: CommittedTrip?, val start: TripStart?, val unreachable: UnreachableTrip?)
+data class TripStart(val place: Destination, @Transient val carriesOver: Boolean)
+sealed interface StartChoice { Keep; CurrentPosition; Place(place) }   // PlanTripInteractor.Params.start
 class TripRepository(storage: TripStorage, sites: SiteLookup) {
     val state: StateFlow<TripState>
     suspend fun restore()

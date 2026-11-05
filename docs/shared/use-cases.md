@@ -19,7 +19,7 @@ class RefreshChargeNowInteractor : Interactor<Params, Unit>
 
 // Trips
 class DestinationSearchObserver : SubjectInteractor<Params, DestinationSearch>
-class PlanTripInteractor : Interactor<Params, TripPlanResult>               // sets destination and planned trip
+class PlanTripInteractor : Interactor<Params, TripPlanResult?>              // sets destination, planned trip and its start; null without a start or a fix
 class ReplanWithArrivalSocInteractor : Interactor<Params, TripPlanResult?>  // stores the level, re-plans the planned trip
 class CommitTripInteractor : Interactor<Params, CommittedTrip>             // "An Maps senden" makes the plan the active route
 class ReplanCommittedTripInteractor : Interactor<Params, TripPlanResult?>  // plans the active route anew and commits it

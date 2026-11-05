@@ -7,6 +7,7 @@ struct SearchBar: View {
     let expanded: Bool
     let searching: Bool
     var focused: FocusState<Bool>.Binding
+    var hint = localized("home_search_hint")
     let onOpen: () -> Void
     let onBack: () -> Void
 
@@ -25,7 +26,7 @@ struct SearchBar: View {
             } else {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             }
-            TextField(localized("home_search_hint"), text: $query)
+            TextField(hint, text: $query)
                 .focused(focused)
                 .submitLabel(.search)
                 .autocorrectionDisabled()
@@ -100,8 +101,23 @@ struct DestinationHeader: View {
 struct SearchResultsPanel: View {
     let state: SearchUiState
     let onPick: (SearchRow) -> Void
+    /// The start search's first row, which resets the start; only shown while picking a start.
+    var onPickCurrentPosition: (() -> Void)? = nil
 
     var body: some View {
+        VStack(spacing: 0) {
+            if let onPickCurrentPosition, state.target == .start {
+                CurrentPositionRow(state: state, onTap: onPickCurrentPosition)
+                if !state.rows.isEmpty || state.failed { Divider().padding(.leading, 44) }
+            }
+            results
+        }
+        .frame(maxWidth: .infinity)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+        .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+    }
+
+    @ViewBuilder private var results: some View {
         Group {
             if state.failed {
                 message(localized("plan_search_failed"), color: Brand.error)
@@ -121,9 +137,6 @@ struct SearchResultsPanel: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .frame(maxWidth: .infinity)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
-        .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
     }
 
     private func message(_ text: String, color: Color) -> some View {
@@ -132,6 +145,43 @@ struct SearchResultsPanel: View {
             .foregroundStyle(color)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
+    }
+}
+
+private struct CurrentPositionRow: View {
+    let state: SearchUiState
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                Image(systemName: "location.fill")
+                    .foregroundStyle(Brand.primary)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(localized("home_search_current_position"))
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    if let address = state.currentPositionAddress {
+                        Text(address)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                if state.startIsCurrentPosition {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Brand.primary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(state.startIsCurrentPosition ? .isSelected : [])
+        .accessibilityIdentifier("search-current-position")
     }
 }
 
