@@ -368,6 +368,7 @@ private struct EndRow: View {
                 titleLines
                     .padding(.top, rowPadding)
                     .padding(.bottom, lineGap / 2)
+                    .padding(.horizontal, cardPadding)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onTitleTap)
@@ -376,13 +377,14 @@ private struct EndRow: View {
                 levelLine
                     .padding(.top, lineGap / 2)
                     .padding(.bottom, rowPadding)
+                    .padding(.horizontal, cardPadding)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                     .onTapGesture { onTap?() }
                     .accessibilityElement(children: .combine)
                     .accessibilityAddTraits(onTap == nil ? [] : .isButton)
             }
-            .modifier(EndRowFrame(selected: selected, verticalPadding: false))
+            .modifier(EndRowFrame(selected: selected, padded: false))
         } else {
             VStack(alignment: .leading, spacing: lineGap) {
                 titleLines
@@ -448,12 +450,12 @@ private struct EndRow: View {
 
 private struct EndRowFrame: ViewModifier {
     let selected: Bool
-    var verticalPadding = true
+    var padded = true
 
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, cardPadding)
-            .padding(.vertical, verticalPadding ? rowPadding : 0)
+            .padding(.horizontal, padded ? cardPadding : 0)
+            .padding(.vertical, padded ? rowPadding : 0)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(selected ? Brand.primaryContainer : Color.clear, in: RoundedRectangle(cornerRadius: 16))
     }
