@@ -169,7 +169,7 @@ class TripViewModel(
             // Persisted alongside, so the plan starts at once.
             launch { socPercent?.let { updateManualSoc(UpdateManualSocInteractor.Params(it)) } }
             planTrip(PlanTripInteractor.Params(from, destination, startSocPercent = socPercent))
-                .onSuccess(::onPlanned)
+                .onSuccess { result -> result?.let(::onPlanned) }
                 .onFailure { events.value = TripEvent.NoConnection }
         }
     }

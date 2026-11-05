@@ -182,8 +182,8 @@ val SOC_RANGE = 1..100
 /**
  * Plans with the selected vehicle and the stored preferences. A null
  * [startSocPercent] takes the stored manual level, and without one
- * [DEFAULT_ASSUMED_SOC_PERCENT]. The plan carries the address of [from]
- * when [addresses] finds one in time.
+ * [DEFAULT_ASSUMED_SOC_PERCENT]. The plan carries [knownStartAddress], or else
+ * the address of [from] when [addresses] finds one in time.
  */
 suspend fun TripPlanning.planWithSettings(
     vehicles: VehicleRepository,
@@ -194,6 +194,7 @@ suspend fun TripPlanning.planWithSettings(
     destination: Destination,
     startSocPercent: Double?,
     computation: CoroutineDispatcher,
+    knownStartAddress: String? = null,
 ): TripPlanResult {
     val vehicle = vehicles.vehicle.first()?.withRoadLoadFrom(catalog.presets.first()) ?: return TripPlanResult.NoVehicle
     val soc = startSocPercent
@@ -204,13 +205,15 @@ suspend fun TripPlanning.planWithSettings(
     val networks = preferences.networks.first()
     return coroutineScope {
         val startAddress = async {
-            withTimeoutOrNull(START_ADDRESS_TIMEOUT_MILLIS) { cancellableRunCatching { addresses.addressAt(from) }.getOrNull() }
+            knownStartAddress ?: withTimeoutOrNull(START_ADDRESS_TIMEOUT_MILLIS) {
+                cancellableRunCatching { addresses.addressAt(from) }.getOrNull()
+            }?.startLine()
         }
         val result = withContext(computation) {
             plan(from, destination, vehicle, soc, arrivalSoc, filters, networks)
         }
         if (result is TripPlanResult.Planned) {
-            TripPlanResult.Planned(result.plan.copy(startAddress = startAddress.await()?.startLine()))
+            TripPlanResult.Planned(result.plan.copy(startAddress = startAddress.await()))
         } else {
             startAddress.cancel()
             result

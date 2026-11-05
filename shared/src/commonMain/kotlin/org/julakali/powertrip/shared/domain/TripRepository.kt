@@ -20,28 +20,30 @@ data class TripState(
     val destination: Destination? = null,
     val planned: TripPlan? = null,
     val committed: CommittedTrip? = null,
+    /** Where [planned] starts when it isn't the current position; the car never uses it. */
+    val start: TripStart? = null,
     /** No plan reached [destination]. Not kept across a restart: the level or the connection will have changed. */
     @Transient val unreachable: UnreachableTrip? = null,
 ) {
 
-    fun planned(destination: Destination, plan: TripPlan): TripState =
-        copy(destination = destination, planned = plan, unreachable = null)
+    fun planned(destination: Destination, plan: TripPlan, start: TripStart? = null): TripState =
+        copy(destination = destination, planned = plan, unreachable = null, start = start)
 
     /** The old plan goes: it was made for a level or a destination that no longer holds. */
-    fun unreachable(destination: Destination, why: UnreachableTrip): TripState =
-        copy(destination = destination, planned = null, unreachable = why)
+    fun unreachable(destination: Destination, why: UnreachableTrip, start: TripStart? = null): TripState =
+        copy(destination = destination, planned = null, unreachable = why, start = start)
 
     /** The plan's destination, or the one no plan reached. */
     val currentDestination: Destination? get() = planned?.destination ?: destination.takeIf { unreachable != null }
 
     /** Replaces the committed trip and takes the planned one off the map. */
     fun committed(trip: CommittedTrip): TripState =
-        copy(destination = trip.plan.destination, planned = null, committed = trip, unreachable = null)
+        copy(destination = trip.plan.destination, planned = null, committed = trip, unreachable = null, start = null)
 
     /** A committed trip planned anew; what is on the map stays. */
     fun replanned(trip: CommittedTrip): TripState = copy(committed = trip)
 
-    fun planDismissed(): TripState = copy(planned = null, unreachable = null)
+    fun planDismissed(): TripState = copy(planned = null, unreachable = null, start = null)
 
     fun ended(): TripState = copy(committed = null)
 

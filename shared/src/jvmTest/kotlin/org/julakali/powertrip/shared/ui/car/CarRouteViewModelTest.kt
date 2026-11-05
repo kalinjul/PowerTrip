@@ -24,6 +24,7 @@ import org.julakali.powertrip.shared.domain.NetworkPreferences
 import org.julakali.powertrip.shared.domain.Route
 import org.julakali.powertrip.shared.domain.SoCSource
 import org.julakali.powertrip.shared.domain.SoCSourceKind
+import org.julakali.powertrip.shared.domain.StartChoice
 import org.julakali.powertrip.shared.domain.TripPlan
 import org.julakali.powertrip.shared.domain.TripPlanResult
 import org.julakali.powertrip.shared.domain.TripPlanning
@@ -64,6 +65,7 @@ class CarRouteViewModelTest {
     private val fixes = MutableSharedFlow<Fix>(replay = 1)
     private var plannedSoc: Double? = null
     private var plans = 0
+    private var plannedFrom: LatLon? = null
 
     private fun plan(destination: Destination = muenchen) = TripPlan(
         route = Route(listOf(hamburg, destination.position), distanceKm = 776.0, durationMinutes = 470.0),
@@ -86,6 +88,7 @@ class CarRouteViewModelTest {
         ): TripPlanResult {
             plans++
             plannedSoc = startSocPercent
+            plannedFrom = from
             return TripPlanResult.Planned(plan(destination))
         }
     }
@@ -173,5 +176,21 @@ class CarRouteViewModelTest {
         assertEquals(40.0, vehicles.manualSocPercent.first())
         assertNull(trips.state.value.planned)
         viewModel.uiState.await { it is CarRouteUiState.Ready }
+    }
+
+    @Test
+    fun `the car plans from where it is and drops a start picked on the phone`() = runBlocking<Unit> {
+        withVehicle()
+        val hotel = Destination("Hotel Adlon", LatLon(52.516, 13.380))
+        PlanTripInteractor(planner, vehicles, FakeVehicleCatalog(), preferences, { null }, history, trips, testDispatchers)(
+            PlanTripInteractor.Params(hamburg, muenchen, start = StartChoice.Place(hotel)),
+        )
+        val viewModel = viewModel()
+
+        fixes.emit(Fix(hamburg, null, null, 0L))
+
+        viewModel.uiState.await { it is CarRouteUiState.Ready && plans == 2 }
+        assertEquals(hamburg, plannedFrom)
+        assertNull(trips.state.value.start)
     }
 }
