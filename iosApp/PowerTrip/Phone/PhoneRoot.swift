@@ -94,6 +94,8 @@ struct PhoneRoot: View {
     @State private var alert: PhoneAlert?
     @State private var command: CameraCommand?
     @State private var tripDetent: PresentationDetent = TripSheetDetents.peek
+    /// The start search is open, so the trip sheet steps aside; mirrored from the search state.
+    @State private var pickingStart = false
     @State private var navigationApp: NavigationApp = .appleMaps
 
     init() {
@@ -105,7 +107,7 @@ struct PhoneRoot: View {
     var body: some View {
         Observing(session.trip.uiState, session.activeRoute.uiState, session.phoneApp.uiState) { trip, committed, app in
             let onPage = !path.isEmpty
-            let sheetShown = (trip as? TripUiStateSheet) != nil && !onPage
+            let sheetShown = (trip as? TripUiStateSheet) != nil && !onPage && !pickingStart
             NavigationStack(path: $path) {
                 HomeScreen(
                     session: session,
@@ -159,6 +161,11 @@ struct PhoneRoot: View {
         }
         .task { await collectActiveRouteEvents() }
         .task {
+            for await search in session.search.uiState {
+                pickingStart = search.expanded && search.target == .start
+            }
+        }
+        .task {
             for await event in session.phoneApp.event {
                 if let event { location.handle(event) }
             }
@@ -193,6 +200,7 @@ struct PhoneRoot: View {
                             model.onSectionSent()
                         },
                         startSocEdit: { model.onStartSocEditRequested() },
+                        startEdit: { session.search.onStartSearchOpened() },
                         arrivalSocEdit: { model.onArrivalSocEditRequested() }
                     )
                 )
@@ -333,9 +341,19 @@ private struct HomeScreen: View {
                             search.onClosed()
                         },
                         picked: { row in
+                            let forStart = searchState.target == .start
                             query = ""
                             search.onClosed()
-                            session.trip.plan(destination: row.destination, socPercent: nil)
+                            if forStart {
+                                session.trip.onStartPicked(place: row.destination)
+                            } else {
+                                session.trip.plan(destination: row.destination, socPercent: nil)
+                            }
+                        },
+                        currentPositionPicked: {
+                            query = ""
+                            search.onClosed()
+                            session.trip.onStartPicked(place: nil)
                         },
                         tripCleared: { session.trip.clear() },
                         destinationTapped: { moveCamera(to: plan != nil ? .route : sheet.map { .position($0.destination.position, meters: 20_000) }) },

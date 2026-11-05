@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import org.julakali.powertrip.shared.ChargeStopsFeature
 import org.julakali.powertrip.shared.domain.Destination
 import org.julakali.powertrip.shared.domain.Fix
+import org.julakali.powertrip.shared.domain.StartChoice
 import org.julakali.powertrip.shared.domain.TripPlan
 import org.julakali.powertrip.shared.domain.TripPlanResult
 import org.julakali.powertrip.shared.domain.TripRepository
@@ -137,8 +138,9 @@ class CarRouteViewModel(
                 from = fix.position,
                 destination = destination,
                 startSocPercent = feature.currentEnergy.value?.socPercent,
+                start = StartChoice.CurrentPosition,
             ),
         ).getOrDefault(TripPlanResult.NoRoute)
-        failure.value = result.takeUnless { it is TripPlanResult.Planned }
+        failure.value = result?.takeUnless { it is TripPlanResult.Planned }
     }
 }

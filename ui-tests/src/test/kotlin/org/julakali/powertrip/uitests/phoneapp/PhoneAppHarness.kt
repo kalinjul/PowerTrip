@@ -66,6 +66,9 @@ import java.lang.reflect.Proxy
 class PhoneAppHarness {
     val hamburg = LatLon(53.55, 9.99)
     val muenchen = LatLon(48.137, 11.575)
+
+    /** A second search hit, on the way to [muenchen]. */
+    val wuerzburg get() = along(0.6)
     val fix = Fix(hamburg, null, null, 0L)
 
     /** On the straight line: the planner's corridor is only 3 km wide. */
@@ -109,7 +112,7 @@ class PhoneAppHarness {
     private fun fakes(allSites: List<ChargeSite>) = module {
         single<LocationSource> { FakeLocationSource(fix) }
         single<ReverseGeocoder> { ReverseGeocoder { null } }
-        single<Geocoder> { FakeGeocoder(Place("München", "München, Bayern", muenchen)) }
+        single<Geocoder> { FakeGeocoder(Place("München", "München, Bayern", muenchen), Place("Würzburg", "Würzburg, Bayern", wuerzburg)) }
         single<RouteSiteSource> { StraightLineRouteSiteSource(allSites) }
         single<SiteRepository> { FakeSiteRepository(allSites) }
         single<ChargePointStatusRepository> { NoStatuses }
@@ -151,9 +154,9 @@ private class FakeLocationSource(private val fix: Fix) : LocationSource {
     override suspend fun currentFix(): Fix = fix
 }
 
-private class FakeGeocoder(private val hit: Place) : Geocoder {
+private class FakeGeocoder(private vararg val hits: Place) : Geocoder {
     override suspend fun search(query: String, near: LatLon?, limit: Int): List<Place> =
-        if (query.contains("münch", ignoreCase = true)) listOf(hit) else emptyList()
+        hits.filter { it.name.contains(query, ignoreCase = true) }
 }
 
 private fun straightLine(from: LatLon, to: LatLon): Route {

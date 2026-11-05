@@ -10,6 +10,10 @@ import org.julakali.powertrip.shared.domain.LatLon
 import org.julakali.powertrip.shared.domain.LocationSource
 import org.julakali.powertrip.shared.domain.usecases.DestinationSearchObserver
 import org.julakali.powertrip.shared.domain.Place
+import org.julakali.powertrip.shared.domain.Route
+import org.julakali.powertrip.shared.domain.TripPlan
+import org.julakali.powertrip.shared.domain.TripRepository
+import org.julakali.powertrip.shared.domain.TripStart
 import org.julakali.powertrip.shared.settings.InMemoryPreferencesDataStore
 import org.julakali.powertrip.shared.settings.DataStoreDestinationHistory
 import org.julakali.powertrip.shared.testVehicleRepository
@@ -135,8 +139,58 @@ class SearchViewModelTest {
         assertTrue(searchViewModel(savedState).uiState.await { it.expanded }.expanded)
     }
 
+    private val trips = TripRepository()
+
     private fun searchViewModel(savedState: SavedStateHandle = SavedStateHandle()) =
-        main.track(SearchViewModel(stubFeature(), DestinationSearchObserver(NoGeocoder, NoLocation), vehicles(), history(), savedState))
+        main.track(SearchViewModel(stubFeature(), DestinationSearchObserver(NoGeocoder, NoLocation), vehicles(), history(), trips, savedState))
+
+    private val munichPlan = TripPlan(
+        route = Route(listOf(frankfurt, LatLon(48.14, 11.58)), distanceKm = 390.0, durationMinutes = 240.0),
+        destination = Destination("München", LatLon(48.14, 11.58)),
+        stops = emptyList(),
+        driveMinutes = 240.0,
+        chargeMinutes = 0.0,
+        arrivalSocPercent = 30.0,
+        startAddress = "Feldstraße 66, Hamburg",
+    )
+
+    @Test
+    fun `the start search opens empty and closes back into the destination search`() = runBlocking<Unit> {
+        val viewModel = searchViewModel()
+
+        viewModel.onStartSearchOpened()
+        val opened = viewModel.uiState.await { it.expanded }
+        assertEquals(SearchTarget.START, opened.target)
+        assertEquals("", opened.query)
+
+        viewModel.onClosed()
+        assertEquals(SearchTarget.DESTINATION, viewModel.uiState.await { !it.expanded }.target)
+        viewModel.onOpened()
+        assertEquals(SearchTarget.DESTINATION, viewModel.uiState.await { it.expanded }.target)
+    }
+
+    @Test
+    fun `the start search knows whether the trip starts at the current position`() = runBlocking<Unit> {
+        trips.update { it.planned(munichPlan.destination, munichPlan) }
+        val viewModel = searchViewModel()
+        viewModel.onStartSearchOpened()
+
+        val here = viewModel.uiState.await { it.expanded && it.currentPositionAddress != null }
+        assertTrue(here.startIsCurrentPosition)
+        assertEquals("Feldstraße 66, Hamburg", here.currentPositionAddress)
+
+        val hotel = Destination("Hotel Adlon", LatLon(52.516, 13.380), "Unter den Linden 77, 10117 Berlin")
+        trips.update { it.planned(munichPlan.destination, munichPlan.copy(startAddress = hotel.address), TripStart(hotel)) }
+        val picked = viewModel.uiState.await { !it.startIsCurrentPosition }
+        assertNull(picked.currentPositionAddress)
+    }
+
+    @Test
+    fun `an open start search comes back after process death`() = runBlocking<Unit> {
+        val savedState = SavedStateHandle()
+        searchViewModel(savedState).onStartSearchOpened()
+        assertEquals(SearchTarget.START, searchViewModel(savedState).uiState.await { it.expanded }.target)
+    }
 
     private fun vehicles() = testVehicleRepository()
 

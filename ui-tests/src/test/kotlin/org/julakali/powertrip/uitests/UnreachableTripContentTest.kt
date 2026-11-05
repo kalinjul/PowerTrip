@@ -7,8 +7,11 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.julakali.powertrip.android.phone.SocEditing
 import org.julakali.powertrip.android.phone.UnreachableTripContent
+import org.julakali.powertrip.shared.domain.Destination
+import org.julakali.powertrip.shared.domain.LatLon
 import org.julakali.powertrip.shared.domain.UnreachableTrip
 import org.julakali.powertrip.shared.ui.TripUiState
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -30,10 +33,15 @@ class UnreachableTripContentTest {
 
     private var editStart = false
     private var editArrival = false
+    private var editPlace = false
 
-    private fun content(why: UnreachableTrip = UnreachableTrip.NoCharger(afterKm = 0.0)) = compose.setThemedContent {
+    private fun content(
+        why: UnreachableTrip = UnreachableTrip.NoCharger(afterKm = 0.0),
+        start: Destination? = null,
+    ) = compose.setThemedContent {
         UnreachableTripContent(
-            trip = TripUiState.Unreachable(Fixtures.plan.destination, why = why, startSocPercent = 5.0),
+            trip = TripUiState.Unreachable(Fixtures.plan.destination, why = why, startSocPercent = 5.0, start = start),
+            onEditStart = { editPlace = true },
             socEditing = SocEditing(
                 socInput = null,
                 arrivalSocInput = null,
@@ -58,6 +66,15 @@ class UnreachableTripContentTest {
         compose.onNodeWithText(compose.string(Res.string.plan_failed_no_charger_at_start)).assertIsDisplayed()
         compose.onNodeWithText(Fixtures.plan.destination.name).assertIsDisplayed()
         compose.onNodeWithText(compose.string(Res.string.trip_send_maps)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a different start is a tap away`() {
+        content(start = Destination("Hotel Adlon", LatLon(52.516, 13.380)))
+
+        compose.onNodeWithText("Hotel Adlon").performClick()
+        assertTrue(editPlace)
+        assertFalse(editStart)
     }
 
     @Test

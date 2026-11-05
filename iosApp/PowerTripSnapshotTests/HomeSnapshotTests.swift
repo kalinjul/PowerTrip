@@ -15,7 +15,8 @@ final class HomeSnapshotTests: XCTestCase {
         plan: TripPlan? = nil,
         planning: Bool = false,
         activeRouteEnabled: Bool = true,
-        hasPermission: Bool? = true
+        hasPermission: Bool? = true,
+        actions: HomeActions = .none
     ) -> some View {
         HomeContent(
             home: state,
@@ -26,7 +27,7 @@ final class HomeSnapshotTests: XCTestCase {
             planning: planning,
             activeRouteEnabled: activeRouteEnabled,
             hasLocationPermission: hasPermission,
-            actions: .none
+            actions: actions
         ) {
             Color(.systemGray5)
         } compass: {
@@ -81,6 +82,19 @@ final class HomeSnapshotTests: XCTestCase {
             Fixtures.row("Berliner Tor", "20099 Hamburg", km: 0.4, recent: false),
         ]
         assertLightAndDark(home(search: Fixtures.search(expanded: true, query: "Berlin", rows: rows), query: "Berlin"), named: "home", frame: .phone)
+    }
+
+    func testSearchStart() {
+        let rows = [
+            Fixtures.row("Hotel Adlon", "Unter den Linden 77, 10117 Berlin", km: 255, recent: true),
+            Fixtures.row("München", "Marienplatz 1, 80331 München", km: 612, recent: true),
+        ]
+        let search = Fixtures.search(expanded: true, target: .start, currentPositionAddress: "Feldstraße 66, Hamburg", rows: rows)
+        assertLightAndDark(
+            home(search: search, destination: Fixtures.munichDestination, plan: Fixtures.plan, actions: HomeActions(currentPositionPicked: {})),
+            named: "home",
+            frame: .phone
+        )
     }
 
     func testSearchFailed() {

@@ -58,7 +58,10 @@ import org.julakali.powertrip.shared.resources.garage_vehicle_row
 import org.julakali.powertrip.shared.resources.home_pill_active_route
 import org.julakali.powertrip.shared.resources.home_pill_charge_now
 import org.julakali.powertrip.shared.resources.home_search_back
+import org.julakali.powertrip.shared.resources.home_search_current_position
 import org.julakali.powertrip.shared.resources.home_search_hint
+import org.julakali.powertrip.shared.resources.home_search_start_hint
+import org.julakali.powertrip.shared.resources.trip_start_edit
 import org.julakali.powertrip.shared.resources.home_settings
 import org.julakali.powertrip.shared.resources.home_trip_clear
 import org.julakali.powertrip.shared.resources.phone_detail_navigate
@@ -146,6 +149,32 @@ class PhoneAppFlowTest {
         compose.onNodeWithText("Stopp", substring = true).assertIsDisplayed()
         compose.onNodeWithText(" laden", substring = true).assertIsDisplayed()
         compose.onNodeWithText(chargeNowPill()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the start pen re-plans from a searched place, and the current position takes it back`() {
+        launch()
+        searchAndPick()
+        waitForTrip()
+
+        compose.onNodeWithContentDescription(compose.string(Res.string.trip_start_edit)).performClick()
+        waitForText(compose.string(Res.string.home_search_start_hint))
+        // The sheet steps down so the search's rows aren't under it.
+        compose.waitUntil(WAIT_MILLIS) { !compose.onNodeWithText(compose.string(Res.string.trip_send_maps)).isDisplayed() }
+        compose.onNodeWithText(compose.string(Res.string.home_search_start_hint)).performTextInput("Würz")
+        waitForText("Würzburg")
+        compose.onNodeWithText("Würzburg").performClick()
+
+        waitForTextGone(compose.string(Res.string.home_search_start_hint))
+        waitForText("Würzburg")
+        compose.onAllNodesWithText("München", substring = true).onFirst().assertIsDisplayed()
+
+        compose.onNodeWithContentDescription(compose.string(Res.string.trip_start_edit)).performClick()
+        waitForText(compose.string(Res.string.home_search_current_position))
+        compose.onNodeWithText(compose.string(Res.string.home_search_current_position)).performClick()
+
+        waitForTextGone("Würzburg")
+        compose.onNodeWithText(compose.string(Res.string.home_search_start_hint)).assertDoesNotExist()
     }
 
     @Test

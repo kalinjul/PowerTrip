@@ -246,6 +246,10 @@
     <string name="trip_unreachable_summary">Couldn't plan this trip</string>
     <string name="trip_stop_missing">A charging stop on this route can no longer be found. Plan the route again.</string>
     <string name="trip_soc_edit">Change starting battery level</string>
+    <string name="trip_start_edit">Change start</string>
+    <string name="trip_start_distance">%1$d km from you</string>
+    <string name="home_search_start_hint">Search start</string>
+    <string name="home_search_current_position">Current location</string>
     <string name="trip_arrival_soc_edit">Change arrival battery level</string>
     <string name="trip_soc_confirm">Replan</string>
 

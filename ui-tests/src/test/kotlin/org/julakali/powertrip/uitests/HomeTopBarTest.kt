@@ -2,6 +2,7 @@ package org.julakali.powertrip.uitests
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -10,6 +11,7 @@ import org.julakali.powertrip.android.phone.HomeTopBar
 import org.julakali.powertrip.shared.domain.Destination
 import org.julakali.powertrip.shared.domain.LatLon
 import org.julakali.powertrip.shared.domain.TripPlan
+import org.julakali.powertrip.shared.ui.SearchTarget
 import org.julakali.powertrip.shared.ui.SearchUiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -18,7 +20,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.julakali.powertrip.shared.resources.Res
+import org.julakali.powertrip.shared.resources.home_search_current_position
 import org.julakali.powertrip.shared.resources.home_search_hint
+import org.julakali.powertrip.shared.resources.home_search_start_hint
 import org.julakali.powertrip.shared.resources.home_trip_clear
 
 @RunWith(RobolectricTestRunner::class)
@@ -32,6 +36,7 @@ class HomeTopBarTest {
         destination: Destination? = trip?.destination,
         onClearTrip: () -> Unit = {},
         onFlyTo: (LatLon) -> Unit = {},
+        onPickCurrentPosition: () -> Unit = {},
     ) = compose.setThemedContent {
         HomeTopBar(
             search = search,
@@ -39,6 +44,7 @@ class HomeTopBarTest {
             onExpandedChange = {},
             onQueryChange = {},
             onPick = {},
+            onPickCurrentPosition = onPickCurrentPosition,
             onClearTrip = onClearTrip,
             onFlyTo = onFlyTo,
             destination = destination,
@@ -47,6 +53,28 @@ class HomeTopBarTest {
 
     private val hint get() = compose.onNodeWithText(compose.string(Res.string.home_search_hint))
     private val header get() = compose.onNodeWithText(Fixtures.plan.destination.name)
+
+    @Test
+    fun `the start search asks for a start and offers the current position first`() {
+        var picked = false
+        topBar(
+            search = SearchUiState(expanded = true, target = SearchTarget.START, currentPositionAddress = "Feldstraße 66, Hamburg"),
+            trip = Fixtures.plan,
+            onPickCurrentPosition = { picked = true },
+        )
+        compose.onNodeWithText(compose.string(Res.string.home_search_start_hint)).assertIsDisplayed()
+        compose.onNodeWithText("Feldstraße 66, Hamburg").assertIsDisplayed()
+        compose.onNodeWithText(compose.string(Res.string.home_search_current_position)).assertIsSelected()
+
+        compose.onNodeWithText(compose.string(Res.string.home_search_current_position)).performClick()
+        assertTrue(picked)
+    }
+
+    @Test
+    fun `the destination search has no current-position row`() {
+        topBar(search = SearchUiState(expanded = true))
+        compose.onNodeWithText(compose.string(Res.string.home_search_current_position)).assertDoesNotExist()
+    }
 
     @Test
     fun `without a trip the search bar shows`() {

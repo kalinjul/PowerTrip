@@ -13,6 +13,8 @@ struct HomeActions {
     var searchOpened: () -> Void = {}
     var searchClosed: () -> Void = {}
     var picked: (SearchRow) -> Void = { _ in }
+    /// The start search's "current location" row.
+    var currentPositionPicked: () -> Void = {}
     var tripCleared: () -> Void = {}
     var destinationTapped: () -> Void = {}
     var permissionRequested: () -> Void = {}
@@ -58,7 +60,7 @@ struct HomeContent<MapLayer: View, Compass: View>: View {
             VStack(spacing: 8) {
                 topBar
                 if searching {
-                    SearchResultsPanel(state: search, onPick: actions.picked)
+                    SearchResultsPanel(state: search, onPick: actions.picked, onPickCurrentPosition: actions.currentPositionPicked)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 } else {
                     HStack(alignment: .top) {
@@ -132,6 +134,7 @@ struct HomeContent<MapLayer: View, Compass: View>: View {
                     expanded: searching,
                     searching: search.searching,
                     focused: $searchFocused,
+                    hint: localized(search.target == .start ? "home_search_start_hint" : "home_search_hint"),
                     onOpen: actions.searchOpened,
                     onBack: actions.searchClosed
                 )

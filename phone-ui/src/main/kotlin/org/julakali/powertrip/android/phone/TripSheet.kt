@@ -78,6 +78,7 @@ import org.julakali.powertrip.android.phone.components.ChargeLevelSheet
 import org.julakali.powertrip.android.phone.theme.PowerTripColors
 import org.julakali.powertrip.android.phone.theme.tabular
 import org.julakali.powertrip.shared.domain.CommittedTrip
+import org.julakali.powertrip.shared.domain.Destination
 import org.julakali.powertrip.shared.domain.PlannedStop
 import org.julakali.powertrip.shared.domain.TripLeg
 import org.julakali.powertrip.shared.domain.TripPlan
@@ -111,6 +112,8 @@ import org.julakali.powertrip.shared.resources.trip_select_section
 import org.julakali.powertrip.shared.resources.trip_send_maps
 import org.julakali.powertrip.shared.resources.trip_soc_confirm
 import org.julakali.powertrip.shared.resources.trip_soc_edit
+import org.julakali.powertrip.shared.resources.trip_start_distance
+import org.julakali.powertrip.shared.resources.trip_start_edit
 import org.julakali.powertrip.shared.resources.trip_stop_missing
 import org.julakali.powertrip.shared.resources.trip_start
 import org.julakali.powertrip.shared.resources.trip_summary_charging
@@ -166,6 +169,11 @@ fun TripSheetContent(
     departure: LocalTime = LocalNow.current(),
     /** A tap on a destination row that edits no charge level; `null` leaves it inert. */
     onOpenDestination: (() -> Unit)? = null,
+    /** The place picked to start from; `null` is the current position. */
+    start: Destination? = null,
+    startDistanceKm: Double? = null,
+    /** Opens the place search for a different start; `null` where the start is fixed. */
+    onEditStart: (() -> Unit)? = null,
 ) {
     val selecting = selection.selecting
     val selectionA = selection.a
@@ -286,6 +294,9 @@ fun TripSheetContent(
                     socEditing = socEditing,
                     departure = departure,
                     onOpenDestination = onOpenDestination,
+                    start = start,
+                    startDistanceKm = startDistanceKm,
+                    onEditStart = onEditStart,
                     modifier = Modifier.fillMaxSize(),
                 )
                 TripListLayout.TILES -> StopTiles(
@@ -345,6 +356,9 @@ private fun StopCards(
     socEditing: SocEditing?,
     departure: LocalTime,
     onOpenDestination: (() -> Unit)?,
+    start: Destination?,
+    startDistanceKm: Double?,
+    onEditStart: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val selecting = selection.selecting
@@ -356,7 +370,8 @@ private fun StopCards(
     LazyColumn(modifier = modifier, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
         item(key = "start") {
             EndRow(
-                title = plan.startAddress ?: stringResource(Res.string.trip_start),
+                title = start?.name ?: plan.startAddress ?: stringResource(Res.string.trip_start),
+                subtitle = startSubtitle(start, startDistanceKm),
                 time = etaText(context, 0.0, departure),
                 level = startSocPercent,
                 levelUnknown = stringResource(Res.string.trip_dep_now_unknown),
@@ -364,6 +379,8 @@ private fun StopCards(
                 selected = picked(0),
                 onClick = if (selecting) ({ onPickPoint(0) }) else socEditing?.onEditStartSoc,
                 editDescription = socEditing?.let { stringResource(Res.string.trip_soc_edit) },
+                onTitleClick = onEditStart.takeUnless { selecting },
+                titleEditDescription = onEditStart?.takeUnless { selecting }?.let { stringResource(Res.string.trip_start_edit) },
             )
         }
         itemsIndexed(plan.stops, key = { _, stop -> stop.site.id }) { i, stop ->
@@ -421,39 +438,83 @@ private fun EndRow(
     temperatureC: Double? = null,
     selected: Boolean = false,
     onClickLabel: String? = null,
+    /** A line under the title, e.g. the picked start's address. */
+    subtitle: String? = null,
+    /** Splits the row: the title lines get this tap, the level line keeps [onClick]. */
+    onTitleClick: (() -> Unit)? = null,
+    /** Names what a tap on the title edits and shows a pen beside it. */
+    titleEditDescription: String? = null,
 ) {
     val hasSecondLine = level != null || levelUnknown != null || temperatureC != null
+    val titleClick = onTitleClick?.takeIf { hasSecondLine }
+    val split = titleClick != null
+    // Split, each half's share of the row padding sits inside its own tap target.
     Column(
-        verticalArrangement = Arrangement.spacedBy(LINE_GAP),
+        verticalArrangement = Arrangement.spacedBy(if (split) 0.dp else LINE_GAP),
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
             .then(if (selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier)
-            .then(if (onClick != null) Modifier.clickable(onClickLabel = onClickLabel, onClick = onClick) else Modifier)
-            .padding(horizontal = CARD_PADDING, vertical = ROW_PADDING),
+            .then(if (onClick != null && !split) Modifier.clickable(onClickLabel = onClickLabel, onClick = onClick) else Modifier)
+            .padding(vertical = if (split) 0.dp else ROW_PADDING),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Filled.LocationOn,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(MARKER_SIZE),
-            )
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = MARKER_GAP).weight(1f),
-            )
-            if (!hasSecondLine) EditPen(editDescription)
-            time?.let { ClockText(it) }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(LINE_GAP),
+            modifier = Modifier
+                .then(titleClick?.let { Modifier.clickable(onClick = it).padding(top = ROW_PADDING, bottom = LINE_GAP / 2) } ?: Modifier)
+                .padding(horizontal = CARD_PADDING),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.LocationOn,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(MARKER_SIZE),
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(start = MARKER_GAP).weight(1f),
+                ) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    EditPen(titleEditDescription)
+                }
+                if (!hasSecondLine) EditPen(editDescription)
+                time?.let { ClockText(it) }
+            }
+            subtitle?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = SECOND_LINE_INSET),
+                )
+            }
         }
         if (hasSecondLine) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(start = SECOND_LINE_INSET),
+                modifier = Modifier
+                    .then(
+                        if (split) {
+                            Modifier
+                                .fillMaxWidth()
+                                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                                .padding(top = LINE_GAP / 2, bottom = ROW_PADDING)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .padding(start = CARD_PADDING + SECOND_LINE_INSET, end = CARD_PADDING),
             ) {
                 if (level != null) {
                     BatteryIcon(level)
@@ -738,16 +799,24 @@ fun UnreachableTripSummary(onReplan: () -> Unit) {
  * the way out of "no charger in reach" is a different level.
  */
 @Composable
-fun UnreachableTripContent(trip: TripUiState.Unreachable, socEditing: SocEditing, modifier: Modifier = Modifier) {
+fun UnreachableTripContent(
+    trip: TripUiState.Unreachable,
+    socEditing: SocEditing,
+    modifier: Modifier = Modifier,
+    onEditStart: (() -> Unit)? = null,
+) {
     SocEditors(socEditing)
     // The sheet stays at its peek here, so a large font scrolls instead of cutting the destination off.
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp)) {
         EndRow(
-            title = stringResource(Res.string.trip_start),
+            title = trip.start?.name ?: stringResource(Res.string.trip_start),
+            subtitle = startSubtitle(trip.start, trip.startDistanceKm),
             level = trip.startSocPercent,
             levelUnknown = stringResource(Res.string.trip_dep_now_unknown),
             onClick = socEditing.onEditStartSoc,
             editDescription = stringResource(Res.string.trip_soc_edit),
+            onTitleClick = onEditStart,
+            titleEditDescription = onEditStart?.let { stringResource(Res.string.trip_start_edit) },
         )
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -773,6 +842,13 @@ fun UnreachableTripContent(trip: TripUiState.Unreachable, socEditing: SocEditing
         )
     }
 }
+
+/** The picked start's address and how far away it is, whichever are known. */
+@Composable
+private fun startSubtitle(start: Destination?, distanceKm: Double?): String? = listOfNotNull(
+    start?.address,
+    distanceKm?.let { stringResource(Res.string.trip_start_distance, it.roundToInt()) },
+).joinToString(" · ").ifEmpty { null }
 
 /** "312 km · 3h 10m" for the destination header. */
 @Composable

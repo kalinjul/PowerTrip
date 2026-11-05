@@ -15,8 +15,8 @@ class ReplanWithArrivalSocInteractor(
     private val planTrip: PlanTripInteractor,
 ) : Interactor<ReplanWithArrivalSocInteractor.Params, TripPlanResult?>() {
 
-    /** [from] is where the re-planned trip starts. */
-    data class Params(val socPercent: Double, val from: LatLon)
+    /** [from] is the current position, `null` without a fix; a picked start wins over it. */
+    data class Params(val socPercent: Double, val from: LatLon?)
 
     override suspend fun doWork(params: Params): TripPlanResult? {
         updateArrivalSoc(UpdateArrivalSocInteractor.Params(params.socPercent)).getOrThrow()

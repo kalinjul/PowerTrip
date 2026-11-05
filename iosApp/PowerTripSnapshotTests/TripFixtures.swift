@@ -82,7 +82,14 @@ extension Fixtures {
 
     static let noSelection = SectionSelection(selecting: false, a: nil, b: nil)
 
-    static func planned(_ plan: TripPlan = plan, selection: SectionSelection = noSelection) -> TripUiStatePlanned {
+    static let hotel = Destination(name: "Hotel Adlon", position: LatLon(lat: 52.516, lon: 13.380), address: "Unter den Linden 77, 10117 Berlin")
+
+    static func planned(
+        _ plan: TripPlan = plan,
+        selection: SectionSelection = noSelection,
+        start: Destination? = nil,
+        startDistanceKm: Double? = nil
+    ) -> TripUiStatePlanned {
         TripUiStatePlanned(
             plan: plan,
             startPosition: hamburg,
@@ -90,12 +97,23 @@ extension Fixtures {
             selection: selection,
             socInput: nil,
             arrivalSocInput: nil,
-            socAskedForReplan: false
+            socAskedForReplan: false,
+            start: start,
+            startDistanceKm: startDistanceKm.map { KotlinDouble(value: $0) }
         )
     }
 
-    static func unreachable(_ why: UnreachableTrip) -> TripUiStateUnreachable {
-        TripUiStateUnreachable(destination: munichDestination, why: why, startSocPercent: 12, socInput: nil, arrivalSocInput: nil, socAskedForReplan: false)
+    static func unreachable(_ why: UnreachableTrip, start: Destination? = nil) -> TripUiStateUnreachable {
+        TripUiStateUnreachable(
+            destination: munichDestination,
+            why: why,
+            startSocPercent: 12,
+            socInput: nil,
+            arrivalSocInput: nil,
+            socAskedForReplan: false,
+            start: start,
+            startDistanceKm: nil
+        )
     }
 
     static func home(
@@ -120,8 +138,27 @@ extension Fixtures {
         )
     }
 
-    static func search(expanded: Bool = false, query: String = "", rows: [SearchRow] = [], searching: Bool = false, failed: Bool = false) -> SearchUiState {
-        SearchUiState(expanded: expanded, query: query, rows: rows, searching: searching, failed: failed, hasVehicle: true, results: [])
+    static func search(
+        expanded: Bool = false,
+        target: SearchTarget = .destination,
+        currentPositionAddress: String? = nil,
+        query: String = "",
+        rows: [SearchRow] = [],
+        searching: Bool = false,
+        failed: Bool = false
+    ) -> SearchUiState {
+        SearchUiState(
+            expanded: expanded,
+            target: target,
+            startIsCurrentPosition: true,
+            currentPositionAddress: currentPositionAddress,
+            query: query,
+            rows: rows,
+            searching: searching,
+            failed: failed,
+            hasVehicle: true,
+            results: []
+        )
     }
 
     static func row(_ title: String, _ detail: String?, km: Double?, recent: Bool) -> SearchRow {

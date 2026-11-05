@@ -171,6 +171,8 @@ fun PhoneApp(librariesRes: Int) {
                 if (openInMaps(url)) tripViewModel.commit()
             },
             floatingControlsHeight = floatingControlsHeight,
+            onEditStart = searchViewModel::onStartSearchOpened,
+            suspended = searchUi.expanded,
             viewModel = tripViewModel,
         ) { peek ->
             ChargeNowSheetScaffold(
@@ -215,6 +217,7 @@ fun PhoneApp(librariesRes: Int) {
                     },
                     // No vehicle? Planning reports it as an event.
                     onPick = tripViewModel::plan,
+                    onPickStart = tripViewModel::onStartPicked,
                     // Only takes the committed route off the map; the trip stays under way.
                     onClearTrip = if (activeRouteOnMap != null) activeRouteViewModel::onMapHidden else tripViewModel::clear,
                     // Navigating to one of the plan's stops is committing, as sending the plan is.

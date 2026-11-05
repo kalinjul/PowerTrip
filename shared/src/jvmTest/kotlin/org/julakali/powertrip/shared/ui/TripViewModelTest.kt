@@ -22,6 +22,7 @@ import org.julakali.powertrip.shared.domain.NetworkPreferences
 import org.julakali.powertrip.shared.domain.Route
 import org.julakali.powertrip.shared.domain.SoCSource
 import org.julakali.powertrip.shared.domain.SoCSourceKind
+import org.julakali.powertrip.shared.domain.StartChoice
 import org.julakali.powertrip.shared.domain.TripPlan
 import org.julakali.powertrip.shared.domain.TripPlanResult
 import org.julakali.powertrip.shared.domain.TripPlanning
@@ -43,6 +44,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class TripViewModelTest {
 
@@ -61,6 +63,7 @@ class TripViewModelTest {
     private val history = DataStoreDestinationHistory(InMemoryPreferencesDataStore())
     private val trips = TripRepository()
     private var plannedSoc: Double? = null
+    private var plannedFrom: LatLon? = null
     private var plans = 0
     private var outcome: () -> TripPlanResult = { TripPlanResult.Planned(plan()) }
 
@@ -85,6 +88,7 @@ class TripViewModelTest {
         ): TripPlanResult {
             plans++
             plannedSoc = startSocPercent
+            plannedFrom = from
             return outcome()
         }
     }
@@ -198,5 +202,104 @@ class TripViewModelTest {
 
         withTimeout(5_000) { viewModel.uiState.first { it == TripUiState.NoPlan } }
         assertNull(trips.state.value.unreachable)
+    }
+
+    private val hotel = Destination("Hotel Adlon", LatLon(52.516, 13.380), "Unter den Linden 77, 10117 Berlin")
+
+    @Test
+    fun `picking a start re-plans the same destination from there, leaving the charge level alone`() = runBlocking {
+        val viewModel = planned(feature(carSoc = null))
+
+        viewModel.onStartPicked(hotel)
+
+        val state = withTimeout(5_000) { viewModel.uiState.first { (it as? TripUiState.Planned)?.start != null } } as TripUiState.Planned
+        assertEquals(hotel, state.start)
+        assertEquals(muenchen, state.destination)
+        assertEquals(hotel.position, plannedFrom)
+        assertEquals(55.0, plannedSoc)
+        assertEquals(55.0, state.startSocPercent)
+    }
+
+    @Test
+    fun `a far-away start says how far it is, the current position does not`() = runBlocking {
+        val viewModel = planned(feature(carSoc = null))
+        assertNull((viewModel.uiState.value as TripUiState.Planned).startDistanceKm)
+
+        viewModel.onStartPicked(hotel)
+
+        val state = withTimeout(5_000) { viewModel.uiState.first { (it as? TripUiState.Planned)?.start != null } } as TripUiState.Planned
+        assertTrue(state.startDistanceKm!! in 250.0..260.0, "was ${state.startDistanceKm}")
+    }
+
+    @Test
+    fun `a start next to the driver shows no distance`() = runBlocking {
+        val viewModel = planned(feature(carSoc = null))
+
+        viewModel.onStartPicked(Destination("Nebenan", LatLon(53.553, 9.99)))
+
+        val state = withTimeout(5_000) { viewModel.uiState.first { (it as? TripUiState.Planned)?.start != null } } as TripUiState.Planned
+        assertNull(state.startDistanceKm)
+    }
+
+    @Test
+    fun `the current position resets the start`() = runBlocking {
+        val viewModel = planned(feature(carSoc = null))
+        viewModel.onStartPicked(hotel)
+        withTimeout(5_000) { viewModel.uiState.first { (it as? TripUiState.Planned)?.start != null } }
+
+        viewModel.onStartPicked(null)
+
+        withTimeout(5_000) { viewModel.uiState.first { it is TripUiState.Planned && it.start == null } }
+        assertEquals(hamburg, plannedFrom)
+    }
+
+    @Test
+    fun `a changed start level re-plans from the picked start`() = runBlocking {
+        val viewModel = planned(feature(carSoc = null))
+        viewModel.onStartPicked(hotel)
+        withTimeout(5_000) { viewModel.uiState.first { (it as? TripUiState.Planned)?.start != null } }
+        plannedFrom = null
+
+        viewModel.onStartSocEditRequested()
+        withTimeout(5_000) { viewModel.uiState.first { (it as? TripUiState.Planned)?.socInput != null } }
+        viewModel.onStartSocInputChanged("70")
+        viewModel.onStartSocConfirmed()
+
+        withTimeout(5_000) { viewModel.uiState.first { it is TripUiState.Planned && plannedSoc == 70.0 } }
+        assertEquals(hotel.position, plannedFrom)
+    }
+
+    @Test
+    fun `an unreachable trip can take a different start`() = runBlocking {
+        outcome = { TripPlanResult.NoChargerInReach(afterKm = 0.0) }
+        val feature = feature(carSoc = null)
+        vehicles.setVehicle(VehicleProfile("Testwagen", 77.0, 18.0, setOf(ConnectorType.CCS2)))
+        feature.start()
+        feature.locate()
+        val viewModel = viewModel(feature)
+        viewModel.plan(muenchen)
+        withTimeout(5_000) { viewModel.uiState.first { it is TripUiState.Unreachable } }
+
+        viewModel.onStartPicked(hotel)
+
+        val state = withTimeout(5_000) { viewModel.uiState.first { (it as? TripUiState.Unreachable)?.start != null } }
+        assertEquals(hotel, (state as TripUiState.Unreachable).start)
+        assertEquals(hotel.position, plannedFrom)
+    }
+
+    @Test
+    fun `without a fix a trip plans from the picked start`() = runBlocking {
+        vehicles.setVehicle(VehicleProfile("Testwagen", 77.0, 18.0, setOf(ConnectorType.CCS2)))
+        PlanTripInteractor(planner, vehicles, FakeVehicleCatalog(), preferences, { null }, history, trips, testDispatchers)(
+            PlanTripInteractor.Params(null, muenchen, start = StartChoice.Place(hotel)),
+        )
+        val viewModel = viewModel(feature(carSoc = null))
+        val kiel = Destination("Kiel", LatLon(54.32, 10.14))
+
+        viewModel.plan(kiel)
+
+        val state = withTimeout(5_000) { viewModel.uiState.first { it is TripUiState.Planned } }
+        assertEquals(hotel, (state as TripUiState.Planned).start)
+        assertEquals(hotel.position, plannedFrom)
     }
 }

@@ -10,6 +10,8 @@ struct TripActions {
     var sentToMaps: () -> Void = {}
     /// `nil` makes the start row read-only.
     var startSocEdit: (() -> Void)?
+    /// Opens the place search for a different start; `nil` where the start is fixed.
+    var startEdit: (() -> Void)?
     var arrivalSocEdit: (() -> Void)?
     /// A tap on a destination row that edits no charge level; `nil` leaves it inert.
     var destinationOpened: (() -> Void)?
@@ -35,7 +37,9 @@ struct TripSheetContent: View {
                     selection: planned.selection,
                     layout: layout,
                     now: now,
-                    actions: actions
+                    actions: actions,
+                    start: planned.start,
+                    startDistanceKm: planned.startDistanceKm?.doubleValue
                 )
             }
         } else if let unreachable = trip as? TripUiStateUnreachable {
@@ -59,6 +63,9 @@ struct PlanBody: View {
     let layout: TripListLayout
     let now: Date
     let actions: TripActions
+    /// The place picked to start from; `nil` is the current position.
+    var start: Destination? = nil
+    var startDistanceKm: Double? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -85,7 +92,15 @@ struct PlanBody: View {
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 default:
                     ScrollView {
-                        StopRail(plan: plan, startSocPercent: startSocPercent, selection: selection, now: now, actions: actions)
+                        StopRail(
+                            plan: plan,
+                            startSocPercent: startSocPercent,
+                            selection: selection,
+                            now: now,
+                            actions: actions,
+                            start: start,
+                            startDistanceKm: startDistanceKm
+                        )
                             .padding(.horizontal, 16)
                             .padding(.vertical, 4)
                     }
@@ -224,20 +239,26 @@ struct StopRail: View {
     let selection: SectionSelection
     let now: Date
     let actions: TripActions
+    var start: Destination? = nil
+    var startDistanceKm: Double? = nil
 
     var body: some View {
         let last = plan.stops.count + 1
         let legs = plan.legs
         VStack(spacing: 0) {
+            let startEdit = selection.selecting ? nil : actions.startEdit
             EndRow(
-                title: plan.startAddress ?? localized("trip_start"),
+                title: start?.name ?? plan.startAddress ?? localized("trip_start"),
+                subtitle: startSubtitle(start, distanceKm: startDistanceKm),
                 time: etaText(0, now: now),
                 level: startSocPercent,
                 levelUnknown: localized("trip_dep_now_unknown"),
                 temperatureC: plan.route.startTemperatureC?.doubleValue,
                 selected: picked(0),
                 editDescription: actions.startSocEdit.map { _ in localized("trip_soc_edit") },
-                onTap: selection.selecting ? { actions.pointPicked(0) } : actions.startSocEdit
+                onTap: selection.selecting ? { actions.pointPicked(0) } : actions.startSocEdit,
+                onTitleTap: startEdit,
+                titleEditDescription: startEdit.map { _ in localized("trip_start_edit") }
             )
             ForEach(Array(plan.stops.enumerated()), id: \.element.site.id) { offset, stop in
                 let index = offset + 1
@@ -285,11 +306,14 @@ private struct UnreachableRail: View {
     var body: some View {
         VStack(spacing: 0) {
             EndRow(
-                title: localized("trip_start"),
+                title: trip.start?.name ?? localized("trip_start"),
+                subtitle: startSubtitle(trip.start, distanceKm: trip.startDistanceKm?.doubleValue),
                 level: trip.startSocPercent?.doubleValue,
                 levelUnknown: localized("trip_dep_now_unknown"),
                 editDescription: localized("trip_soc_edit"),
-                onTap: actions.startSocEdit
+                onTap: actions.startSocEdit,
+                onTitleTap: actions.startEdit,
+                titleEditDescription: actions.startEdit.map { _ in localized("trip_start_edit") }
             )
             HStack(spacing: markerGap) {
                 Image(systemName: "exclamationmark.circle")
@@ -312,9 +336,17 @@ private struct UnreachableRail: View {
     }
 }
 
+/// The picked start's address and how far away it is, whichever are known.
+private func startSubtitle(_ start: Destination?, distanceKm: Double?) -> String? {
+    let parts = [start?.address, distanceKm.map { localized("trip_start_distance", Int32($0.rounded())) }].compactMap { $0 }
+    return parts.isEmpty ? nil : parts.joined(separator: " · ")
+}
+
 /// The trip's start or destination: a pin, the name and one time, the charge level and the forecast below.
 private struct EndRow: View {
     let title: String
+    /// A line under the title, e.g. the picked start's address.
+    var subtitle: String? = nil
     var time: String? = nil
     var level: Double? = nil
     /// Stands in for an unknown level; without either the row has no second line.
@@ -324,48 +356,108 @@ private struct EndRow: View {
     /// Names what a tap edits and shows the pen; `nil` on a row that edits nothing.
     let editDescription: String?
     let onTap: (() -> Void)?
+    /// Splits the row: the title lines get this tap, the level line keeps `onTap`.
+    var onTitleTap: (() -> Void)? = nil
+    /// Names what a tap on the title edits and shows a pen beside it.
+    var titleEditDescription: String? = nil
 
     var body: some View {
-        let hasSecondLine = level != nil || levelUnknown != nil || temperatureC != nil
+        if let onTitleTap, hasSecondLine {
+            // Each half's share of the row padding sits inside its own tap target.
+            VStack(alignment: .leading, spacing: 0) {
+                titleLines
+                    .padding(.top, rowPadding)
+                    .padding(.bottom, lineGap / 2)
+                    .padding(.horizontal, cardPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onTitleTap)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
+                levelLine
+                    .padding(.top, lineGap / 2)
+                    .padding(.bottom, rowPadding)
+                    .padding(.horizontal, cardPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onTap?() }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(onTap == nil ? [] : .isButton)
+            }
+            .modifier(EndRowFrame(selected: selected, padded: false))
+        } else {
+            VStack(alignment: .leading, spacing: lineGap) {
+                titleLines
+                levelLine
+            }
+            .modifier(EndRowFrame(selected: selected))
+            .contentShape(Rectangle())
+            .onTapGesture { onTap?() }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(onTap == nil ? [] : .isButton)
+        }
+    }
+
+    private var hasSecondLine: Bool { level != nil || levelUnknown != nil || temperatureC != nil }
+
+    private var titleLines: some View {
         VStack(alignment: .leading, spacing: lineGap) {
             HStack(spacing: 0) {
                 Image(systemName: "mappin.circle.fill")
                     .font(.system(size: 20))
                     .foregroundStyle(Brand.primary)
                     .frame(width: markerSize, height: markerSize)
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .padding(.leading, markerGap)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    EditPen(description: titleEditDescription)
+                }
+                .padding(.leading, markerGap)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if !hasSecondLine { EditPen(description: editDescription) }
                 if let time { ClockText(time) }
             }
-            if hasSecondLine {
-                HStack(spacing: 6) {
-                    if let level {
-                        BatteryIcon(percent: level)
-                        LevelText(percent: level)
-                    } else if let levelUnknown {
-                        MetaLine(levelUnknown)
-                    }
-                    EditPen(description: editDescription)
-                    if let temperatureC {
-                        Spacer()
-                        MetaLine(localized("trip_temperature", Int32(temperatureC.rounded())))
-                    }
-                }
-                .padding(.leading, secondLineInset)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.leading, secondLineInset)
             }
         }
-        .padding(.horizontal, cardPadding)
-        .padding(.vertical, rowPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(selected ? Brand.primaryContainer : Color.clear, in: RoundedRectangle(cornerRadius: 16))
-        .contentShape(Rectangle())
-        .onTapGesture { onTap?() }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(onTap == nil ? [] : .isButton)
+    }
+
+    @ViewBuilder private var levelLine: some View {
+        if hasSecondLine {
+            HStack(spacing: 6) {
+                if let level {
+                    BatteryIcon(percent: level)
+                    LevelText(percent: level)
+                } else if let levelUnknown {
+                    MetaLine(levelUnknown)
+                }
+                EditPen(description: editDescription)
+                if let temperatureC {
+                    Spacer()
+                    MetaLine(localized("trip_temperature", Int32(temperatureC.rounded())))
+                }
+            }
+            .padding(.leading, secondLineInset)
+        }
+    }
+}
+
+private struct EndRowFrame: ViewModifier {
+    let selected: Bool
+    var padded = true
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, padded ? cardPadding : 0)
+            .padding(.vertical, padded ? rowPadding : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? Brand.primaryContainer : Color.clear, in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
