@@ -165,7 +165,7 @@ private struct CarPager: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: Self.gap) {
+            HStack(spacing: Self.gap) {
                 ForEach(vehicles, id: \.id) { vehicle in
                     CarCard(vehicle: vehicle, fullRangeKm: fullRangeKm[vehicle.id]?.doubleValue)
                         .accessibilityElement(children: .combine)
@@ -180,6 +180,8 @@ private struct CarPager: View {
                         .accessibilityAddTraits(vehicle.id == selected.id ? .isSelected : [])
                 }
             }
+            // Every card as tall as the tallest, so a two-line name can't make the page below jump.
+            .fixedSize(horizontal: false, vertical: true)
             .scrollTargetLayout()
         }
         .contentMargins(.horizontal, Self.inset, for: .scrollContent)
@@ -193,8 +195,28 @@ private struct CarPager: View {
             if shownId != id { withAnimation { shownId = id } }
         }
         .onChange(of: shownId) { _, id in
-            guard let id, id != selected.id, let vehicle = vehicles.first(where: { $0.id == id }) else { return }
-            onSelect(vehicle)
+            if #unavailable(iOS 18) { select(id) }
+        }
+        .modifier(SelectWhenResting { select(shownId) })
+    }
+
+    private func select(_ id: String?) {
+        guard let id, id != selected.id, let vehicle = vehicles.first(where: { $0.id == id }) else { return }
+        onSelect(vehicle)
+    }
+}
+
+/// Picks the shown car once the cards have come to rest: selecting mid-slide refreshes the page under the moving cards.
+private struct SelectWhenResting: ViewModifier {
+    let select: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18, *) {
+            content.onScrollPhaseChange { _, phase in
+                if phase == .idle { select() }
+            }
+        } else {
+            content
         }
     }
 }
@@ -241,7 +263,7 @@ private struct CarCard: View {
         }
         .foregroundStyle(Brand.onPrimaryContainer)
         .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             // On the shape alone: on the whole card, every label would cast its own shadow.
             RoundedRectangle(cornerRadius: 24)

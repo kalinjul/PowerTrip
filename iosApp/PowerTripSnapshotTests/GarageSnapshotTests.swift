@@ -10,6 +10,15 @@ final class GarageSnapshotTests: XCTestCase {
         assertLightAndDark(NavigationStack { GarageContent(state: Fixtures.garage(), actions: .none) }, named: "garage", frame: .phone)
     }
 
+    func testShortNameBesideALongOne() {
+        let long = Fixtures.preset("Mercedes-Benz EQS 450+ Limousine Edition One (2023)", batteryKwh: 108, consumption: 17.8, dcKw: 200)
+        assertLightAndDark(
+            NavigationStack { GarageContent(state: Fixtures.garage([Fixtures.model3, long]), actions: .none) },
+            named: "garage",
+            frame: .phone
+        )
+    }
+
     func testOneCar() {
         assertLightAndDark(NavigationStack { GarageContent(state: Fixtures.garage([Fixtures.id3]), actions: .none) }, named: "garage", frame: .phone)
     }
