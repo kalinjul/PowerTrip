@@ -18,11 +18,14 @@ import org.julakali.powertrip.shared.ui.TripListLayout
 import org.julakali.powertrip.android.phone.SocEditing
 import org.julakali.powertrip.android.phone.TripSheetContent
 import org.julakali.powertrip.android.phone.etaText
+import org.julakali.powertrip.shared.domain.Destination
+import org.julakali.powertrip.shared.domain.LatLon
 import org.julakali.powertrip.shared.domain.PlannedStop
 import org.julakali.powertrip.shared.domain.RouteSegment
 import org.julakali.powertrip.shared.domain.SectionSelection
 import org.julakali.powertrip.shared.domain.TripPlan
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -38,7 +41,10 @@ import org.julakali.powertrip.shared.resources.trip_section_hint
 import org.julakali.powertrip.shared.resources.trip_select_cancel
 import org.julakali.powertrip.shared.resources.trip_select_section
 import org.julakali.powertrip.shared.resources.trip_send_maps
+import org.julakali.powertrip.shared.resources.trip_soc_edit
 import org.julakali.powertrip.shared.resources.trip_start
+import org.julakali.powertrip.shared.resources.trip_start_distance
+import org.julakali.powertrip.shared.resources.trip_start_edit
 import org.julakali.powertrip.shared.resources.trip_temperature
 import org.julakali.powertrip.shared.resources.trip_tile_arrival
 
@@ -59,6 +65,7 @@ class TripSheetContentTest {
         var toggledSelecting = false
         var startSocTyped: String? = null
         var arrivalSocTyped: String? = null
+        var editStart = false
     }
 
     private fun sheet(
@@ -67,6 +74,9 @@ class TripSheetContentTest {
         selection: SectionSelection = SectionSelection(),
         socInput: String? = null,
         arrivalSocInput: String? = null,
+        start: Destination? = null,
+        startDistanceKm: Double? = null,
+        startEditable: Boolean = false,
     ): Calls {
         val calls = Calls()
         compose.setThemedContent {
@@ -94,6 +104,9 @@ class TripSheetContentTest {
                         onArrivalSocConfirm = {},
                         onArrivalSocDismiss = {},
                     ),
+                    start = start,
+                    startDistanceKm = startDistanceKm,
+                    onEditStart = if (startEditable) ({ calls.editStart = true }) else null,
                 )
             }
         }
@@ -205,6 +218,42 @@ class TripSheetContentTest {
         val calls = sheet()
         compose.onNodeWithText(compose.string(Res.string.trip_start)).performClick()
         assertTrue(calls.editStartSoc)
+    }
+
+    private val hotel = Destination("Hotel Adlon", LatLon(52.516, 13.380), "Unter den Linden 77, 10117 Berlin")
+
+    @Test
+    fun `tapping the start's place opens the start search, its level the charge level`() {
+        val calls = sheet(startEditable = true)
+        compose.onNodeWithText(compose.string(Res.string.trip_start)).performClick()
+        assertTrue(calls.editStart)
+        assertFalse(calls.editStartSoc)
+
+        compose.onNodeWithText(compose.string(Res.string.garage_percent, 26)).performClick()
+        assertTrue(calls.editStartSoc)
+    }
+
+    @Test
+    fun `the start's place carries a pen of its own`() {
+        sheet(startEditable = true)
+        compose.onNodeWithContentDescription(compose.string(Res.string.trip_start_edit)).assertIsDisplayed()
+        compose.onNodeWithContentDescription(compose.string(Res.string.trip_soc_edit)).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a picked start shows its name, its address and how far it is`() {
+        sheet(start = hotel, startDistanceKm = 255.4, startEditable = true)
+        compose.onNodeWithText("Hotel Adlon").assertIsDisplayed()
+        compose.onNodeWithText("Unter den Linden 77, 10117 Berlin · ${compose.string(Res.string.trip_start_distance, 255)}").assertIsDisplayed()
+    }
+
+    @Test
+    fun `while selecting a section the start's place picks the point`() {
+        val calls = sheet(selection = SectionSelection(selecting = true), startEditable = true)
+        compose.onNodeWithText(compose.string(Res.string.trip_start)).performClick()
+        assertEquals(0, calls.pickedPoint)
+        assertFalse(calls.editStart)
+        compose.onNodeWithContentDescription(compose.string(Res.string.trip_start_edit)).assertDoesNotExist()
     }
 
     @Test

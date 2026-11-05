@@ -63,6 +63,7 @@ class HomeScreenTest {
             onSearchExpandedChange = {},
             onQueryChange = {},
             onPick = {},
+            onPickCurrentPosition = {},
             onClearTrip = {},
         )
     }

@@ -59,6 +59,8 @@ fun TripSheetScaffold(
     onSendToMaps: (String) -> Unit,
     /** How far the map's floating buttons reach up from the bottom edge; 0 when none are shown. */
     floatingControlsHeight: Dp,
+    /** Opens the place search for a different start. */
+    onEditStart: () -> Unit,
     viewModel: TripViewModel = koinViewModel(),
     content: @Composable (peek: Dp) -> Unit,
 ) {
@@ -132,7 +134,7 @@ fun TripSheetScaffold(
                         when (trip) {
                             is TripUiState.Unreachable -> {
                                 UnreachableTripSummary(onReplan = onReplan)
-                                UnreachableTripContent(trip, socEditing, Modifier.weight(1f))
+                                UnreachableTripContent(trip, socEditing, Modifier.weight(1f), onEditStart = onEditStart)
                             }
                             is TripUiState.Planned -> {
                                 TripSummary(
@@ -163,6 +165,9 @@ fun TripSheetScaffold(
                                     onSendToMaps = { onSendToMaps(trip.mapsUrl) },
                                     socEditing = socEditing,
                                     modifier = Modifier.weight(1f),
+                                    start = trip.start,
+                                    startDistanceKm = trip.startDistanceKm,
+                                    onEditStart = onEditStart,
                                 )
                             }
                         }

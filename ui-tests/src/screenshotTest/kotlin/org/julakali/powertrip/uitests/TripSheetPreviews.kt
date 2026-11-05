@@ -20,12 +20,21 @@ import org.julakali.powertrip.shared.domain.UnreachableTrip
 import org.julakali.powertrip.shared.ui.TripUiState
 import androidx.compose.foundation.layout.Column
 import org.julakali.powertrip.android.phone.headerLine
+import org.julakali.powertrip.shared.domain.Destination
+import org.julakali.powertrip.shared.domain.LatLon
 import org.julakali.powertrip.shared.domain.RouteSegment
 import org.julakali.powertrip.shared.domain.SectionSelection
 import org.julakali.powertrip.shared.domain.TripPlan
 
 @Composable
-private fun Sheet(layout: TripListLayout, selection: SectionSelection = SectionSelection(), plan: TripPlan = SamplePlan) {
+private fun Sheet(
+    layout: TripListLayout,
+    selection: SectionSelection = SectionSelection(),
+    plan: TripPlan = SamplePlan,
+    start: Destination? = null,
+    startDistanceKm: Double? = null,
+    onEditStart: (() -> Unit)? = null,
+) {
     SheetBox {
         TripSheetContent(
             plan = plan,
@@ -38,9 +47,35 @@ private fun Sheet(layout: TripListLayout, selection: SectionSelection = SectionS
             onOpenStop = {},
             onSendToMaps = {},
             socEditing = SocEditing(null, null, false, {}, {}, {}, {}, {}, {}, {}, {}),
+            start = start,
+            startDistanceKm = startDistanceKm,
+            onEditStart = onEditStart,
         )
     }
 }
+
+private val Hotel = Destination("Hotel Adlon", LatLon(52.516, 13.380), "Unter den Linden 77, 10117 Berlin")
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetListStartEditable() = Sheet(TripListLayout.LIST, plan = SamplePlan.copy(startAddress = "Feldstraße 66, Hamburg"), onEditStart = {})
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetListPickedStart() = Sheet(
+    TripListLayout.LIST,
+    plan = SamplePlan.copy(startAddress = Hotel.address),
+    start = Hotel,
+    startDistanceKm = 255.0,
+    onEditStart = {},
+)
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun TripSheetListPickedStartDark() = TripSheetListPickedStart()
 
 @PreviewTest
 @Preview(locale = "de", showBackground = true)
@@ -152,17 +187,23 @@ fun DestinationHeaderNarrowLongTrip() {
 }
 
 @Composable
-private fun UnreachableSheet(why: UnreachableTrip) {
+private fun UnreachableSheet(why: UnreachableTrip, start: Destination? = null, onEditStart: (() -> Unit)? = null) {
     SheetBox {
         Column {
             UnreachableTripSummary(onReplan = {})
             UnreachableTripContent(
-                trip = TripUiState.Unreachable(SamplePlan.destination, why, startSocPercent = 6.0),
+                trip = TripUiState.Unreachable(SamplePlan.destination, why, startSocPercent = 6.0, start = start),
                 socEditing = SocEditing(null, null, false, {}, {}, {}, {}, {}, {}, {}, {}),
+                onEditStart = onEditStart,
             )
         }
     }
 }
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true)
+@Composable
+fun TripSheetNoChargerInReachPickedStart() = UnreachableSheet(UnreachableTrip.NoCharger(afterKm = 0.0), start = Hotel, onEditStart = {})
 
 @PreviewTest
 @Preview(locale = "de", showBackground = true)

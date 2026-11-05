@@ -16,7 +16,11 @@ import org.julakali.powertrip.android.phone.SearchResultsPanel
 import org.julakali.powertrip.shared.domain.Destination
 import org.julakali.powertrip.shared.domain.LatLon
 import org.julakali.powertrip.shared.ui.SearchRow
+import org.julakali.powertrip.shared.ui.SearchTarget
 import org.julakali.powertrip.shared.ui.SearchUiState
+import org.jetbrains.compose.resources.stringResource
+import org.julakali.powertrip.shared.resources.Res
+import org.julakali.powertrip.shared.resources.home_search_start_hint
 
 @Composable
 private fun Framed(content: @Composable () -> Unit) {
@@ -148,6 +152,42 @@ fun HomeSearchBarExpandedDark() = Bar(query = "München", expanded = true)
 @Preview(locale = "de", showBackground = true, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun SearchResultsHitsDark() = SearchResultsHits()
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, heightDp = 520)
+@Composable
+fun DockedSearchBarStartSearch() {
+    Framed {
+        HomeDockedSearchBar(
+            query = "",
+            searching = false,
+            expanded = true,
+            onExpandedChange = {},
+            onQueryChange = {},
+            onClear = {},
+            hint = stringResource(Res.string.home_search_start_hint),
+        ) {
+            SearchResultsPanel(
+                uiState = SearchUiState(
+                    target = SearchTarget.START,
+                    currentPositionAddress = "Feldstraße 66, Hamburg",
+                    rows = listOf(
+                        row("Hotel Adlon", "Unter den Linden 77, 10117 Berlin", 255.0, recent = true),
+                        row("München", "Marienplatz 1, 80331 München", 612.3, recent = true),
+                    ),
+                ),
+                onPick = {},
+                standalone = false,
+                onPickCurrentPosition = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
+@Preview(locale = "de", showBackground = true, heightDp = 520, backgroundColor = 0xFF121212, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+fun DockedSearchBarStartSearchDark() = DockedSearchBarStartSearch()
 
 // Material's DockedSearchBar path, for comparison with the custom pill.
 @PreviewTest

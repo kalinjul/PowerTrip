@@ -84,6 +84,7 @@ private fun Map(mode: ChargeMode) {
                 onSearchExpandedChange = {},
                 onQueryChange = {},
                 onPick = {},
+                onPickCurrentPosition = {},
                 onClearTrip = {},
             )
         }

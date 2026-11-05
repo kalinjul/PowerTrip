@@ -12,7 +12,12 @@ import org.julakali.powertrip.android.phone.theme.PowerTripMotion
 import org.julakali.powertrip.shared.domain.LatLon
 import org.julakali.powertrip.shared.domain.Destination
 import org.julakali.powertrip.shared.domain.TripPlan
+import org.jetbrains.compose.resources.stringResource
+import org.julakali.powertrip.shared.resources.Res
+import org.julakali.powertrip.shared.resources.home_search_hint
+import org.julakali.powertrip.shared.resources.home_search_start_hint
 import org.julakali.powertrip.shared.ui.SearchRow
+import org.julakali.powertrip.shared.ui.SearchTarget
 import org.julakali.powertrip.shared.ui.SearchUiState
 
 /** Material's docked search bar with the hits inside, or the destination header while a trip is planned. */
@@ -25,6 +30,7 @@ fun HomeTopBar(
     onExpandedChange: (Boolean) -> Unit,
     onQueryChange: (String) -> Unit,
     onPick: (SearchRow) -> Unit,
+    onPickCurrentPosition: () -> Unit,
     onClearTrip: () -> Unit,
     onFlyTo: (LatLon) -> Unit,
     modifier: Modifier = Modifier,
@@ -60,8 +66,9 @@ fun HomeTopBar(
                 onExpandedChange = onExpandedChange,
                 onQueryChange = onQueryChange,
                 onClear = { onQueryChange("") },
+                hint = stringResource(if (search.target == SearchTarget.START) Res.string.home_search_start_hint else Res.string.home_search_hint),
             ) {
-                SearchResultsPanel(uiState = search, onPick = onPick, standalone = false)
+                SearchResultsPanel(uiState = search, onPick = onPick, standalone = false, onPickCurrentPosition = onPickCurrentPosition)
             }
         }
     }

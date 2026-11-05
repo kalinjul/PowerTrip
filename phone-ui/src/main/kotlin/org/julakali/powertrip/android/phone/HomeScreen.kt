@@ -87,6 +87,7 @@ import org.julakali.powertrip.shared.domain.MapCharger
 import org.julakali.powertrip.shared.ui.HomeUiState
 import org.julakali.powertrip.shared.ui.HomeViewModel
 import org.julakali.powertrip.shared.ui.SearchRow
+import org.julakali.powertrip.shared.ui.SearchTarget
 import org.julakali.powertrip.shared.ui.SearchUiState
 import org.julakali.powertrip.shared.ui.SearchViewModel
 import org.koin.androidx.compose.koinViewModel
@@ -133,6 +134,8 @@ fun HomeRoute(
     tripLineFor: (ChargeStop) -> String?,
     /** A search hit was picked; the search has closed by then. */
     onPick: (Destination) -> Unit,
+    /** A start was picked in the start search; `null` is the current position. */
+    onPickStart: (Destination?) -> Unit,
     onClearTrip: () -> Unit,
     /** A link for the navigation app, from the detail sheet of the given charger. */
     onOpenMaps: (ChargeStop, String) -> Unit,
@@ -176,8 +179,13 @@ fun HomeRoute(
         onSearchExpandedChange = { open -> if (open) searchViewModel.onOpened() else searchViewModel.onClosed() },
         onQueryChange = searchViewModel::onQueryChanged,
         onPick = { row ->
+            val target = searchUi.target
             searchViewModel.onClosed()
-            onPick(row.destination)
+            if (target == SearchTarget.START) onPickStart(row.destination) else onPick(row.destination)
+        },
+        onPickCurrentPosition = {
+            searchViewModel.onClosed()
+            onPickStart(null)
         },
         onClearTrip = onClearTrip,
         onFloatingControlsHeight = onFloatingControlsHeight,
@@ -221,6 +229,7 @@ fun HomeScreen(
     onSearchExpandedChange: (Boolean) -> Unit,
     onQueryChange: (String) -> Unit,
     onPick: (SearchRow) -> Unit,
+    onPickCurrentPosition: () -> Unit,
     onClearTrip: () -> Unit,
     modifier: Modifier = Modifier,
     onFloatingControlsHeight: (Dp) -> Unit = {},
@@ -354,6 +363,7 @@ fun HomeScreen(
                     onExpandedChange = onSearchExpandedChange,
                     onQueryChange = onQueryChange,
                     onPick = onPick,
+                    onPickCurrentPosition = onPickCurrentPosition,
                     onClearTrip = onClearTrip,
                     onFlyTo = { target -> scope.launch { camera.animate(CameraUpdateFactory.newLatLngZoom(target.toLatLng(), HOME_ZOOM)) } },
                     modifier = Modifier.weight(1f),
@@ -612,6 +622,7 @@ private fun HomePreview(
             onSearchExpandedChange = {},
             onQueryChange = {},
             onPick = {},
+            onPickCurrentPosition = {},
             onClearTrip = {},
             modifier = Modifier.fillMaxSize(),
         )

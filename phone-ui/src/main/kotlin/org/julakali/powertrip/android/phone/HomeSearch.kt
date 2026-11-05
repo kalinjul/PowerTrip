@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.CircularProgressIndicator
@@ -71,11 +73,13 @@ import org.julakali.powertrip.android.phone.R
 import org.julakali.powertrip.android.phone.theme.PowerTripColors
 import org.julakali.powertrip.android.phone.theme.tabular
 import org.julakali.powertrip.shared.ui.SearchRow
+import org.julakali.powertrip.shared.ui.SearchTarget
 import org.julakali.powertrip.shared.ui.SearchUiState
 import org.julakali.powertrip.shared.ui.asKmLabel
 import org.julakali.powertrip.shared.resources.Res
 import org.julakali.powertrip.shared.resources.home_search_back
 import org.julakali.powertrip.shared.resources.home_search_clear
+import org.julakali.powertrip.shared.resources.home_search_current_position
 import org.julakali.powertrip.shared.resources.home_search_hint
 import org.julakali.powertrip.shared.resources.home_trip_clear
 import org.julakali.powertrip.shared.resources.plan_no_results
@@ -100,6 +104,7 @@ fun HomeSearchBar(
     onBack: () -> Unit = {},
     /** Own pill surface, or bare rows inside the home screen's search panel. */
     standalone: Boolean = true,
+    hint: String = stringResource(Res.string.home_search_hint),
 ) {
     LaunchedEffect(takeFocus) {
         if (takeFocus) focusRequester.requestFocus()
@@ -149,7 +154,7 @@ fun HomeSearchBar(
                     ) {
                         if (query.isEmpty()) {
                             Text(
-                                stringResource(Res.string.home_search_hint),
+                                hint,
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = PowerTripColors.faint,
                                 maxLines = 1,
@@ -242,6 +247,8 @@ fun SearchResultsPanel(
     modifier: Modifier = Modifier,
     /** Own card surface, or the list filling the home screen's search panel. */
     standalone: Boolean = true,
+    /** The start search's first row, which resets the start; only shown while picking a start. */
+    onPickCurrentPosition: (() -> Unit)? = null,
 ) {
     val container: @Composable (@Composable () -> Unit) -> Unit = { content ->
         if (standalone) {
@@ -255,51 +262,101 @@ fun SearchResultsPanel(
             Box(modifier.fillMaxSize()) { content() }
         }
     }
+    val currentPosition = onPickCurrentPosition?.takeIf { uiState.target == SearchTarget.START }
     container {
-        when {
-            uiState.failed -> Message(stringResource(Res.string.plan_search_failed), error = true)
-            uiState.rows.isEmpty() && !uiState.isQueryTooShort && !uiState.searching ->
-                Message(stringResource(Res.string.plan_no_results))
-            uiState.rows.isEmpty() -> Unit
-            else -> LazyColumn(modifier = if (standalone) Modifier.heightIn(max = 360.dp) else Modifier.fillMaxSize()) {
-                items(uiState.rows, key = { "${it.destination.position}${it.title}" }) { row ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(11.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onPick(row) }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                    ) {
-                        Icon(
-                            painterResource(if (row.recent) R.drawable.ic_refresh else R.drawable.ic_destination),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Column(Modifier.weight(1f)) {
-                            Text(row.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            row.detail?.let {
-                                Text(
-                                    it,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 2.dp),
-                                )
-                            }
-                        }
-                        row.distanceKm?.let {
+        Column {
+            currentPosition?.let { CurrentPositionRow(uiState, it) }
+            SearchResults(uiState, onPick, standalone)
+        }
+    }
+}
+
+@Composable
+private fun CurrentPositionRow(uiState: SearchUiState, onPick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onPick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Icon(
+            Icons.Filled.MyLocation,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(Res.string.home_search_current_position), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            uiState.currentPositionAddress?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+        if (uiState.startIsCurrentPosition) {
+            Icon(
+                Icons.Filled.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+}
+
+@Composable
+private fun SearchResults(uiState: SearchUiState, onPick: (SearchRow) -> Unit, standalone: Boolean) {
+    when {
+        uiState.failed -> Message(stringResource(Res.string.plan_search_failed), error = true)
+        uiState.rows.isEmpty() && !uiState.isQueryTooShort && !uiState.searching ->
+            Message(stringResource(Res.string.plan_no_results))
+        uiState.rows.isEmpty() -> Unit
+        else -> LazyColumn(modifier = if (standalone) Modifier.heightIn(max = 360.dp) else Modifier.fillMaxSize()) {
+            items(uiState.rows, key = { "${it.destination.position}${it.title}" }) { row ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(11.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(row) }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                ) {
+                    Icon(
+                        painterResource(if (row.recent) R.drawable.ic_refresh else R.drawable.ic_destination),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(row.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        row.detail?.let {
                             Text(
-                                stringResource(Res.string.plan_result_distance, it.asKmLabel()),
-                                style = MaterialTheme.typography.bodySmall.tabular,
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp),
                             )
                         }
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                    row.distanceKm?.let {
+                        Text(
+                            stringResource(Res.string.plan_result_distance, it.asKmLabel()),
+                            style = MaterialTheme.typography.bodySmall.tabular,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             }
         }
     }
@@ -339,6 +396,7 @@ fun HomeDockedSearchBar(
     onQueryChange: (String) -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
+    hint: String = stringResource(Res.string.home_search_hint),
     results: @Composable () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -356,6 +414,7 @@ fun HomeDockedSearchBar(
                 expanded = expanded,
                 onBack = { onExpandedChange(false) },
                 standalone = false,
+                hint = hint,
             )
         },
         expanded = expanded,
