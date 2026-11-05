@@ -16,6 +16,8 @@ import org.julakali.powertrip.shared.toDestination
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import org.julakali.powertrip.shared.combine
+import org.julakali.powertrip.shared.domain.TripRepository
 import kotlinx.coroutines.flow.stateIn
 import kotlin.math.roundToInt
 import org.julakali.powertrip.shared.formatDecimal
@@ -30,9 +32,17 @@ data class SearchRow(
     val recent: Boolean,
 )
 
+/** What a picked row becomes. */
+enum class SearchTarget { DESTINATION, START }
+
 data class SearchUiState(
     /** The bar has focus and the results panel is open. */
     val expanded: Boolean = false,
+    val target: SearchTarget = SearchTarget.DESTINATION,
+    /** The trip starts where the driver is, not at a picked place. */
+    val startIsCurrentPosition: Boolean = true,
+    /** The current position's address, when the trip starts there and one was found. */
+    val currentPositionAddress: String? = null,
     val query: String = "",
     val rows: List<SearchRow> = emptyList(),
     val searching: Boolean = false,
@@ -72,22 +82,29 @@ class SearchViewModel(
     private val observeDestinationSearch: DestinationSearchObserver,
     vehicles: VehicleRepository,
     history: DestinationHistory,
+    trips: TripRepository,
     private val savedState: SavedStateHandle,
 ) : ViewModel() {
 
     private val input = MutableStateFlow(Input())
     private val expanded = MutableStateFlow(savedState.get<Boolean>(KEY_EXPANDED) ?: false)
+    private val target = MutableStateFlow(savedState.get<String>(KEY_TARGET)?.let(SearchTarget::valueOf) ?: SearchTarget.DESTINATION)
 
     val uiState: StateFlow<SearchUiState> = combine(
         combine(expanded, input, ::Pair),
+        target,
         observeDestinationSearch.flow,
         history.recentDestinations,
         vehicles.vehicle,
         feature.currentFix,
-    ) { (open, entry), search, recent, vehicle, fix ->
+        trips.state,
+    ) { (open, entry), searchTarget, search, recent, vehicle, fix, trip ->
         val (query, pick) = entry
         SearchUiState(
             expanded = open,
+            target = searchTarget,
+            startIsCurrentPosition = trip.start == null,
+            currentPositionAddress = trip.planned?.startAddress?.takeIf { trip.start == null },
             query = query,
             rows = pick?.let { listOf(SearchRow(it, it.name, it.address, fix?.position?.distanceKmTo(it.position), recent = false)) }
                 ?: searchRows(query, search.results, recent, fix?.position),
@@ -109,8 +126,17 @@ class SearchViewModel(
     fun onOpened(prefill: Destination? = null) {
         // The field reports focus again while already open; that must not wipe the query.
         if (expanded.value && prefill == null) return
+        setTarget(SearchTarget.DESTINATION)
         setExpanded(true)
         input.value = Input(query = prefill?.let(ChargeStopFormatter::label) ?: "", pick = prefill)
+        search("")
+    }
+
+    /** The trip sheet asked for a different start; a pick from here re-plans from that place. */
+    fun onStartSearchOpened() {
+        setTarget(SearchTarget.START)
+        setExpanded(true)
+        input.value = Input()
         search("")
     }
 
@@ -121,12 +147,18 @@ class SearchViewModel(
 
     fun onClosed() {
         setExpanded(false)
+        setTarget(SearchTarget.DESTINATION)
         onQueryChanged("")
     }
 
     private fun setExpanded(value: Boolean) {
         expanded.value = value
         savedState[KEY_EXPANDED] = value
+    }
+
+    private fun setTarget(value: SearchTarget) {
+        target.value = value
+        savedState[KEY_TARGET] = value.name
     }
 
     private fun search(query: String) {
@@ -137,3 +169,4 @@ class SearchViewModel(
 }
 
 private const val KEY_EXPANDED = "expanded"
+private const val KEY_TARGET = "target"
