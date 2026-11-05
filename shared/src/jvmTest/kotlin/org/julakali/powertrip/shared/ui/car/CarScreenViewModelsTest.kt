@@ -114,34 +114,79 @@ class CarScreenViewModelsTest {
     }
 
     @Test
-    fun `destination search offers recents until text is typed and geocodes only on submit`() = runBlocking<Unit> {
+    fun `destination search offers recents until text is typed and searches the typed text after a pause`() = runBlocking<Unit> {
         val hamburg = Destination("Hamburg", LatLon(53.55, 9.99))
         val berlin = Place(name = "Berlin Hbf", description = "Berlin Hbf", position = LatLon(52.525, 13.369))
-        val queries = mutableListOf<String>()
-        val geocoder = object : Geocoder {
-            override suspend fun search(query: String, near: LatLon?, limit: Int): List<Place> {
-                queries += query
-                return listOf(berlin)
-            }
-        }
-        val noLocation = object : LocationSource {
-            override suspend fun currentFix(): Fix? = null
-            override val updates: Flow<Fix> = emptyFlow()
-        }
+        val geocoder = RecordingGeocoder { listOf(berlin) }
         history.addRecentDestination(hamburg)
         val viewModel = main.track(CarDestinationSearchViewModel(history, DestinationSearchObserver(geocoder, noLocation)))
         assertEquals(listOf(hamburg), viewModel.uiState.await { it.recents.isNotEmpty() }.recents)
 
         viewModel.onSearchTextChanged("Berlin")
-        val typed = viewModel.uiState.await { it.awaitingSubmit }
+        val typed = viewModel.uiState.await { it.query == "Berlin" }
         assertTrue(typed.recents.isEmpty())
-        assertTrue(queries.isEmpty())
+        assertTrue(typed.typing || typed.searching)
 
-        viewModel.onSearchSubmitted("Berlin")
         val found = viewModel.uiState.await { it.places.isNotEmpty() && !it.searching }
         assertEquals(listOf(berlin), found.places)
-        assertEquals(false, found.awaitingSubmit)
-        assertEquals(listOf("Berlin"), queries)
+        assertEquals(false, found.typing)
+        assertEquals(listOf("Berlin"), geocoder.queries)
+    }
+
+    @Test
+    fun `dictated text that arrives after an early submit is searched`() = runBlocking<Unit> {
+        val station = Place(name = "Berlin Hbf", description = "Berlin Hbf", position = LatLon(52.525, 13.369))
+        val geocoder = RecordingGeocoder { query -> if (query == "Berlin Hauptbahnhof") listOf(station) else emptyList() }
+        val viewModel = main.track(CarDestinationSearchViewModel(history, DestinationSearchObserver(geocoder, noLocation)))
+
+        viewModel.onSearchTextChanged("Berlin Haupt")
+        viewModel.onSearchSubmitted("Berlin Haupt")
+        viewModel.onSearchTextChanged("")
+        viewModel.onSearchTextChanged("Berlin Hauptbahnhof")
+
+        val found = viewModel.uiState.await { it.places.isNotEmpty() && !it.searching }
+        assertEquals(listOf(station), found.places)
+        assertEquals("Berlin Hauptbahnhof", found.query)
+        assertEquals("Berlin Hauptbahnhof", geocoder.queries.last())
+    }
+
+    @Test
+    fun `the host emptying its search box right after a dictated submit keeps the search`() = runBlocking<Unit> {
+        val station = Place(name = "Kiel Hbf", description = "Kiel Hbf", position = LatLon(54.315, 10.132))
+        val geocoder = RecordingGeocoder { listOf(station) }
+        val viewModel = main.track(CarDestinationSearchViewModel(history, DestinationSearchObserver(geocoder, noLocation)))
+
+        viewModel.onSearchTextChanged("Kiel Hauptbahnhof")
+        viewModel.onSearchSubmitted("Kiel Hauptbahnhof")
+        viewModel.onSearchTextChanged("")
+
+        val found = viewModel.uiState.await { it.places.isNotEmpty() && !it.searching }
+        assertEquals("Kiel Hauptbahnhof", found.query)
+        assertEquals(listOf(station), found.places)
+    }
+
+    @Test
+    fun `emptying the search box otherwise brings the recents back`() = runBlocking<Unit> {
+        val hamburg = Destination("Hamburg", LatLon(53.55, 9.99))
+        history.addRecentDestination(hamburg)
+        val viewModel = main.track(CarDestinationSearchViewModel(history, DestinationSearchObserver(RecordingGeocoder { emptyList() }, noLocation)))
+
+        viewModel.onSearchSubmitted("Kiel")
+        viewModel.onSearchTextChanged("Ki")
+        viewModel.onSearchTextChanged("")
+
+        assertEquals(listOf(hamburg), viewModel.uiState.await { it.query.isEmpty() && it.recents.isNotEmpty() }.recents)
+    }
+
+    @Test
+    fun `destination search keeps the submitted text so the search box can show it again`() = runBlocking<Unit> {
+        val geocoder = RecordingGeocoder { emptyList() }
+        val viewModel = main.track(CarDestinationSearchViewModel(history, DestinationSearchObserver(geocoder, noLocation)))
+        assertEquals("", viewModel.uiState.await { true }.query)
+
+        viewModel.onSearchSubmitted("Berlin Hauptbahnhof")
+
+        assertEquals("Berlin Hauptbahnhof", viewModel.uiState.await { it.query.isNotEmpty() && !it.searching }.query)
     }
 
     @Test
@@ -163,5 +208,18 @@ class CarScreenViewModelsTest {
 
         diagnostics.recordSoCDiagnostics(SoCDiagnostics(1L, SoCDiagnostics.Outcome.AVAILABLE, detail = "72%"))
         assertEquals("72%", viewModel.uiState.await { it.carReading != null }.carReading)
+    }
+
+    private val noLocation = object : LocationSource {
+        override suspend fun currentFix(): Fix? = null
+        override val updates: Flow<Fix> = emptyFlow()
+    }
+
+    private class RecordingGeocoder(private val answer: (String) -> List<Place>) : Geocoder {
+        val queries = mutableListOf<String>()
+        override suspend fun search(query: String, near: LatLon?, limit: Int): List<Place> {
+            queries += query
+            return answer(query)
+        }
     }
 }
