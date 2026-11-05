@@ -23,7 +23,7 @@
     <string name="car_debug_just_now">just now</string>
 
     <string name="car_search_empty">No results. Try including a town, e.g. “Kiel station”.</string>
-    <string name="car_search_submit_hint">To search, press the magnifier on the keyboard.</string>
+    <string name="car_search_typing_hint">Type or say a destination, the search starts on its own.</string>
 
     <string name="car_route_planning">Planning route…</string>
     <string name="car_route_send_all">Send whole route to Maps</string>

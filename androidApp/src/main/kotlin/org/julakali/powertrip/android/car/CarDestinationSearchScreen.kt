@@ -17,12 +17,12 @@ import kotlinx.coroutines.launch
 import org.julakali.powertrip.shared.resources.Res
 import org.julakali.powertrip.shared.resources.car_home_enter_destination
 import org.julakali.powertrip.shared.resources.car_search_empty
-import org.julakali.powertrip.shared.resources.car_search_submit_hint
+import org.julakali.powertrip.shared.resources.car_search_typing_hint
 import org.julakali.powertrip.shared.Texts
 
 /**
- * Type a destination in the car. While driving, the host disables the
- * keyboard and the recent destinations remain.
+ * Type or dictate a destination in the car. While driving, the host disables
+ * the keyboard; dictation and the recent destinations remain.
  */
 class CarDestinationSearchScreen(
     carContext: CarContext,
@@ -43,11 +43,12 @@ class CarDestinationSearchScreen(
             .setHeaderAction(Action.BACK)
             .setSearchHint(Texts.string(Res.string.car_home_enter_destination))
             .setShowKeyboardByDefault(true)
+            .setInitialSearchText(state.query)
 
         // SearchTemplate rejects an item list while loading (issue #81).
         if (state.searching) return template.setLoading(true).build()
 
-        val emptyMessage = if (state.awaitingSubmit) Res.string.car_search_submit_hint else Res.string.car_search_empty
+        val emptyMessage = if (state.typing) Res.string.car_search_typing_hint else Res.string.car_search_empty
         val itemList = ItemList.Builder()
             .setNoItemsMessage(Texts.string(emptyMessage))
         state.recents.forEach { destination -> itemList.addItem(recentRow(destination)) }

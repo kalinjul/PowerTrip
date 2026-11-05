@@ -23,7 +23,7 @@
     <string name="car_debug_just_now">gerade eben</string>
 
     <string name="car_search_empty">Keine Treffer. Am besten mit Ort suchen, z. B. „Hbf Kiel“.</string>
-    <string name="car_search_submit_hint">Zum Suchen unten auf der Tastatur die Lupe drücken.</string>
+    <string name="car_search_typing_hint">Ziel eingeben oder sagen, die Suche startet von selbst.</string>
 
     <string name="car_route_planning">Route wird geplant …</string>
     <string name="car_route_send_all">Ganze Route an Maps senden</string>

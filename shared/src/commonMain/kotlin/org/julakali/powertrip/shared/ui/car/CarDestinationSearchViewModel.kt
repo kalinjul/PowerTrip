@@ -13,35 +13,39 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
 data class CarDestinationSearchUiState(
+    val query: String = "",
     val searching: Boolean = false,
     /** Offered while nothing is typed. */
     val recents: List<Destination> = emptyList(),
     val places: List<Place> = emptyList(),
-    /** Text is typed but not submitted yet, so an empty list means "not searched yet". */
-    val awaitingSubmit: Boolean = false,
+    /** No search has finished for the typed text yet, so an empty list means "not searched yet". */
+    val typing: Boolean = false,
 )
 
-/** Typing a destination in the car; geocoding fires on submit only, not per keystroke. */
+/**
+ * Typing or dictating a destination in the car. The text is searched after a pause, since the host may submit
+ * dictation before it is complete and send the final text only as a change.
+ */
 class CarDestinationSearchViewModel(
     history: DestinationHistory,
     private val observeDestinationSearch: DestinationSearchObserver,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
-    private val submittedQuery = MutableStateFlow("")
 
     val uiState: StateFlow<CarDestinationSearchUiState> = combine(
         query,
-        submittedQuery,
         history.recentDestinations,
         observeDestinationSearch.flow,
-    ) { query, submitted, recents, search ->
+    ) { query, recents, search ->
         val blank = query.isBlank()
+        val trimmed = query.trim()
         CarDestinationSearchUiState(
+            query = query,
             searching = search.searching,
             recents = if (blank) recents else emptyList(),
             places = if (blank) emptyList() else search.results.orEmpty(),
-            awaitingSubmit = !blank && query != submitted,
+            typing = !blank && (search.query != trimmed || trimmed.length < DestinationSearchObserver.MIN_QUERY_LENGTH),
         )
     }.stateIn(viewModelScope, WhileUiSubscribed, CarDestinationSearchUiState())
 
@@ -49,15 +53,20 @@ class CarDestinationSearchViewModel(
         observeDestinationSearch(DestinationSearchObserver.Params(query = ""))
     }
 
+    private var justSubmitted = false
+
     fun onSearchTextChanged(text: String) {
+        // After a dictated submit the host may empty its search box; that is not the driver clearing it.
+        val hostClearedAfterSubmit = justSubmitted && text.isBlank()
+        justSubmitted = false
+        if (hostClearedAfterSubmit) return
         query.value = text
-        if (text.isBlank()) observeDestinationSearch(DestinationSearchObserver.Params(query = ""))
+        observeDestinationSearch(DestinationSearchObserver.Params(text))
     }
 
     fun onSearchSubmitted(text: String) {
+        justSubmitted = true
         query.value = text
-        if (text.isBlank()) return
-        submittedQuery.value = text
         observeDestinationSearch(DestinationSearchObserver.Params(text, debounce = false))
     }
 }
