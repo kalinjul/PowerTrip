@@ -61,17 +61,19 @@ fun TripSheetScaffold(
     floatingControlsHeight: Dp,
     /** Opens the place search for a different start. */
     onEditStart: () -> Unit,
+    /** The search covers the screen: the sheet steps down out of its way until it closes. */
+    suspended: Boolean,
     viewModel: TripViewModel = koinViewModel(),
     content: @Composable (peek: Dp) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
-    val shown = trip != null
+    val shown = trip != null && !suspended
     // Without stops there is nothing to expand to.
     val expandable = layout == TripListLayout.LIST && trip is TripUiState.Planned
 
-    LaunchedEffect(expandable) {
-        if (!expandable) sheetState.partialExpand()
+    LaunchedEffect(expandable, suspended) {
+        if (!expandable || suspended) sheetState.partialExpand()
     }
 
     // The scaffold snaps to a new peek; animating the value makes a trip glide in and out.

@@ -2,6 +2,7 @@ package org.julakali.powertrip.uitests
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -63,6 +64,7 @@ class HomeTopBarTest {
         )
         compose.onNodeWithText(compose.string(Res.string.home_search_start_hint)).assertIsDisplayed()
         compose.onNodeWithText("Feldstraße 66, Hamburg").assertIsDisplayed()
+        compose.onNodeWithText(compose.string(Res.string.home_search_current_position)).assertIsSelected()
 
         compose.onNodeWithText(compose.string(Res.string.home_search_current_position)).performClick()
         assertTrue(picked)

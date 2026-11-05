@@ -362,20 +362,27 @@ private struct EndRow: View {
     var titleEditDescription: String? = nil
 
     var body: some View {
-        if let onTitleTap {
-            VStack(alignment: .leading, spacing: lineGap) {
+        if let onTitleTap, hasSecondLine {
+            // Each half's share of the row padding sits inside its own tap target.
+            VStack(alignment: .leading, spacing: 0) {
                 titleLines
+                    .padding(.top, rowPadding)
+                    .padding(.bottom, lineGap / 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onTitleTap)
                     .accessibilityElement(children: .combine)
                     .accessibilityAddTraits(.isButton)
                 levelLine
+                    .padding(.top, lineGap / 2)
+                    .padding(.bottom, rowPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                     .onTapGesture { onTap?() }
                     .accessibilityElement(children: .combine)
                     .accessibilityAddTraits(onTap == nil ? [] : .isButton)
             }
-            .modifier(EndRowFrame(selected: selected))
+            .modifier(EndRowFrame(selected: selected, verticalPadding: false))
         } else {
             VStack(alignment: .leading, spacing: lineGap) {
                 titleLines
@@ -441,11 +448,12 @@ private struct EndRow: View {
 
 private struct EndRowFrame: ViewModifier {
     let selected: Bool
+    var verticalPadding = true
 
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, cardPadding)
-            .padding(.vertical, rowPadding)
+            .padding(.vertical, verticalPadding ? rowPadding : 0)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(selected ? Brand.primaryContainer : Color.clear, in: RoundedRectangle(cornerRadius: 16))
     }

@@ -78,7 +78,7 @@ class TripStartTest {
     }
 
     @Test
-    fun `a picked start plans from there and brings its own address`() = runBlocking<Unit> {
+    fun `a picked start plans from there under its own name`() = runBlocking<Unit> {
         withVehicle()
         val trips = TripRepository()
 
@@ -86,7 +86,7 @@ class TripStartTest {
 
         assertEquals(listOf(hotel.position), origins)
         assertEquals(hotel, trips.state.value.start?.place)
-        assertEquals("Unter den Linden 77, 10117 Berlin", trips.state.value.planned?.startAddress)
+        assertEquals("Hotel Adlon", trips.state.value.planned?.startAddress)
         assertEquals(0, addressLookups)
     }
 

@@ -12,6 +12,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.defaultMinSize
@@ -278,7 +279,7 @@ private fun CurrentPositionRow(uiState: SearchUiState, onPick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(11.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onPick)
+            .selectable(selected = uiState.startIsCurrentPosition, onClick = onPick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Icon(

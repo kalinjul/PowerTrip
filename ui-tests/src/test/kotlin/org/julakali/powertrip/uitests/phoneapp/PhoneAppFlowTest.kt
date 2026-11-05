@@ -159,6 +159,8 @@ class PhoneAppFlowTest {
 
         compose.onNodeWithContentDescription(compose.string(Res.string.trip_start_edit)).performClick()
         waitForText(compose.string(Res.string.home_search_start_hint))
+        // The sheet steps down so the search's rows aren't under it.
+        compose.waitUntil(WAIT_MILLIS) { !compose.onNodeWithText(compose.string(Res.string.trip_send_maps)).isDisplayed() }
         compose.onNodeWithText(compose.string(Res.string.home_search_start_hint)).performTextInput("Würz")
         waitForText("Würzburg")
         compose.onNodeWithText("Würzburg").performClick()

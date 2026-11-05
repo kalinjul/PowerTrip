@@ -51,7 +51,7 @@ class PlanTripInteractor(
         val result = cancellableRunCatching {
             planner.planWithSettings(
                 vehicles, catalog, preferences, addresses, from, params.destination, params.startSocPercent, dispatchers.computation,
-                knownStartAddress = start?.place?.let { it.address ?: it.name },
+                knownStartAddress = start?.place?.name,
             )
         }.getOrDefault(TripPlanResult.NoConnection)
         val why = result.unreachable()

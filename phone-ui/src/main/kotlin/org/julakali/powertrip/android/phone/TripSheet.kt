@@ -446,19 +446,23 @@ private fun EndRow(
     titleEditDescription: String? = null,
 ) {
     val hasSecondLine = level != null || levelUnknown != null || temperatureC != null
-    val split = onTitleClick != null
+    val titleClick = onTitleClick?.takeIf { hasSecondLine }
+    val split = titleClick != null
+    // Split, each half's share of the row padding sits inside its own tap target.
     Column(
-        verticalArrangement = Arrangement.spacedBy(LINE_GAP),
+        verticalArrangement = Arrangement.spacedBy(if (split) 0.dp else LINE_GAP),
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
             .then(if (selected) Modifier.background(MaterialTheme.colorScheme.primaryContainer) else Modifier)
             .then(if (onClick != null && !split) Modifier.clickable(onClickLabel = onClickLabel, onClick = onClick) else Modifier)
-            .padding(horizontal = CARD_PADDING, vertical = ROW_PADDING),
+            .padding(vertical = if (split) 0.dp else ROW_PADDING),
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(LINE_GAP),
-            modifier = if (onTitleClick != null) Modifier.clip(MaterialTheme.shapes.small).clickable(onClick = onTitleClick) else Modifier,
+            modifier = Modifier
+                .then(titleClick?.let { Modifier.clickable(onClick = it).padding(top = ROW_PADDING, bottom = LINE_GAP / 2) } ?: Modifier)
+                .padding(horizontal = CARD_PADDING),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -500,8 +504,17 @@ private fun EndRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier
-                    .then(if (split && onClick != null) Modifier.clip(MaterialTheme.shapes.small).clickable(onClick = onClick) else Modifier)
-                    .padding(start = SECOND_LINE_INSET),
+                    .then(
+                        if (split) {
+                            Modifier
+                                .fillMaxWidth()
+                                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                                .padding(top = LINE_GAP / 2, bottom = ROW_PADDING)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .padding(start = CARD_PADDING + SECOND_LINE_INSET, end = CARD_PADDING),
             ) {
                 if (level != null) {
                     BatteryIcon(level)

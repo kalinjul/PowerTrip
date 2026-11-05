@@ -172,6 +172,7 @@ fun PhoneApp(librariesRes: Int) {
             },
             floatingControlsHeight = floatingControlsHeight,
             onEditStart = searchViewModel::onStartSearchOpened,
+            suspended = searchUi.expanded,
             viewModel = tripViewModel,
         ) { peek ->
             ChargeNowSheetScaffold(
