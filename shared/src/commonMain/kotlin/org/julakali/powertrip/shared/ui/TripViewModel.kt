@@ -13,6 +13,8 @@ import org.julakali.powertrip.shared.domain.TripPlan
 import org.julakali.powertrip.shared.domain.NavigationApp
 import org.julakali.powertrip.shared.domain.mapsUrl
 import org.julakali.powertrip.shared.domain.SectionSelection
+import org.julakali.powertrip.shared.domain.StartChoice
+import org.julakali.powertrip.shared.domain.distanceKmTo
 import org.julakali.powertrip.shared.domain.TripPlanResult
 import org.julakali.powertrip.shared.domain.reportedByCar
 import org.julakali.powertrip.shared.domain.SOC_RANGE
@@ -44,6 +46,12 @@ sealed interface TripUiState {
         val destination: Destination
         val startSocPercent: Double?
 
+        /** The place the driver picked to start from; `null` for the current position. */
+        val start: Destination?
+
+        /** How far [start] is from the driver, once that is far enough to be worth saying. */
+        val startDistanceKm: Double?
+
         /** The quick charge-level editor's input; `null` while it is closed. */
         val socInput: String?
 
@@ -62,6 +70,8 @@ sealed interface TripUiState {
         override val socInput: String? = null,
         override val arrivalSocInput: String? = null,
         override val socAskedForReplan: Boolean = false,
+        override val start: Destination? = null,
+        override val startDistanceKm: Double? = null,
     ) : Sheet {
         override val destination: Destination get() = plan.destination
 
@@ -78,6 +88,8 @@ sealed interface TripUiState {
         override val socInput: String? = null,
         override val arrivalSocInput: String? = null,
         override val socAskedForReplan: Boolean = false,
+        override val start: Destination? = null,
+        override val startDistanceKm: Double? = null,
     ) : Sheet
 }
 
@@ -133,6 +145,8 @@ class TripViewModel(
         val plan = trip.planned
         val unreachable = trip.unreachable
         val destination = trip.destination
+        val start = trip.start?.place
+        val startDistanceKm = start?.let { fix?.position?.distanceKmTo(it.position) }?.takeIf { it >= START_DISTANCE_SHOWN_FROM_KM }
         when {
             planning -> TripUiState.Planning
             unreachable != null && destination != null -> TripUiState.Unreachable(
@@ -142,6 +156,8 @@ class TripViewModel(
                 socInput = socInput,
                 arrivalSocInput = arrivalSocInput,
                 socAskedForReplan = askedForReplan,
+                start = start,
+                startDistanceKm = startDistanceKm,
             )
             plan == null -> TripUiState.NoPlan
             else -> TripUiState.Planned(
@@ -152,23 +168,35 @@ class TripViewModel(
                 socInput = socInput,
                 arrivalSocInput = arrivalSocInput,
                 socAskedForReplan = askedForReplan,
+                start = start,
+                startDistanceKm = startDistanceKm,
             )
         }
     }.stateIn(viewModelScope, WhileUiSubscribed, TripUiState.NoPlan)
 
     /**
-     * Plans from the current position to [destination].
+     * Plans to [destination], from the trip's picked start or the current position.
      *
      * A [socPercent] is persisted; `null` means "take the stored one".
      */
     fun plan(destination: Destination, socPercent: Double? = null) {
-        val from = feature.currentFix.value?.position ?: return
+        plan(destination, socPercent, StartChoice.Keep)
+    }
+
+    /** Re-plans the trip from [place]; `null` is the current position. The charge level stays. */
+    fun onStartPicked(place: Destination?) {
+        val destination = trips.state.value.currentDestination ?: return
+        plan(destination, start = place?.let(StartChoice::Place) ?: StartChoice.CurrentPosition)
+    }
+
+    private fun plan(destination: Destination, socPercent: Double? = null, start: StartChoice) {
+        val from = feature.currentFix.value?.position
         // A new plan starts with a clean selection and closed editors.
         resetEditing()
         viewModelScope.launch {
             // Persisted alongside, so the plan starts at once.
             launch { socPercent?.let { updateManualSoc(UpdateManualSocInteractor.Params(it)) } }
-            planTrip(PlanTripInteractor.Params(from, destination, startSocPercent = socPercent))
+            planTrip(PlanTripInteractor.Params(from, destination, startSocPercent = socPercent, start = start))
                 .onSuccess { result -> result?.let(::onPlanned) }
                 .onFailure { events.value = TripEvent.NoConnection }
         }
@@ -269,7 +297,7 @@ class TripViewModel(
     /** Stores the arrival level just entered; the trip is re-planned with it. */
     fun onArrivalSocConfirmed() {
         val socPercent = arrivalSocEditor.value?.toIntOrNull()?.takeIf { it in ARRIVAL_SOC_RANGE } ?: return
-        val from = feature.currentFix.value?.position ?: return
+        val from = feature.currentFix.value?.position
         arrivalSocEditor.value = null
         viewModelScope.launch {
             replanWithArrivalSoc(ReplanWithArrivalSocInteractor.Params(socPercent.toDouble(), from))
@@ -295,3 +323,6 @@ class TripViewModel(
         events.value = null
     }
 }
+
+// Closer than this, the picked start is where the driver is anyway.
+private const val START_DISTANCE_SHOWN_FROM_KM = 1.0
