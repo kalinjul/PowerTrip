@@ -2,6 +2,7 @@ package org.julakali.powertrip.android.car
 
 import androidx.annotation.OptIn
 import androidx.car.app.CarContext
+import androidx.car.app.HostException
 import androidx.car.app.annotations.ExperimentalCarApi
 import androidx.car.app.hardware.CarHardwareManager
 import androidx.car.app.hardware.common.CarValue
@@ -84,7 +85,7 @@ class CarHardwareDebugRecorder(
     fun stop() {
         carInfo?.let { info ->
             unregisterListeners(info)
-            evStatusListener?.let(info::removeEvStatusListener)
+            evStatusListener?.let { listener -> removeQuietly { info.removeEvStatusListener(listener) } }
         }
         evStatusListener = null
         scope?.cancel()
@@ -113,9 +114,17 @@ class CarHardwareDebugRecorder(
     }
 
     private fun unregisterListeners(info: CarInfo) {
-        speedListener?.let(info::removeSpeedListener)
-        mileageListener?.let(info::removeMileageListener)
+        speedListener?.let { listener -> removeQuietly { info.removeSpeedListener(listener) } }
+        mileageListener?.let { listener -> removeQuietly { info.removeMileageListener(listener) } }
         speedListener = null; mileageListener = null
+    }
+
+    // A host that doesn't support a property accepts the subscription but throws on unsubscribing.
+    private inline fun removeQuietly(remove: () -> Unit) {
+        try {
+            remove()
+        } catch (unsupported: HostException) {
+        }
     }
 
     private fun registerListeners(info: CarInfo, executor: Executor) {
